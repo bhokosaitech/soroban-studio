@@ -46,18 +46,22 @@
         /* NAV */
         nav {
             position: fixed;
-            top: 0;
+            top: 2;
             left: 0;
             right: 0;
             z-index: 100;
             background: rgba(255, 255, 255, 0.92);
             backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--border);
-            height: 60px;
+            border: 1px solid #eee;
+            height: 55px;
             display: flex;
             align-items: center;
-            padding: 0 2rem;
+            padding: 0 1rem;
             justify-content: space-between;
+            max-width: 760px;
+            border-radius: 10px;
+            margin: 0 auto;
+            margin-top: 10px;
         }
 
         .nav-logo {
@@ -649,7 +653,8 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) scale(0.95);
-            margin: 0; /* Fix horizontal centering offset by overriding browser margin: auto */
+            margin: 0;
+            /* Fix horizontal centering offset by overriding browser margin: auto */
             opacity: 0;
             transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
             overflow: hidden;
@@ -748,8 +753,10 @@
         }
 
         .form-group input:focus {
-            border-color: var(--ink); /* Sleek black border on focus */
-            box-shadow: 0 0 0 3px rgba(17, 17, 16, 0.15); /* Black focus ring */
+            border-color: var(--ink);
+            /* Sleek black border on focus */
+            box-shadow: 0 0 0 3px rgba(17, 17, 16, 0.15);
+            /* Black focus ring */
         }
 
         .btn-submit {
@@ -835,6 +842,7 @@
                 opacity: 0;
                 transform: scale(0.95);
             }
+
             to {
                 opacity: 1;
                 transform: scale(1);
@@ -1138,12 +1146,14 @@
     <dialog id="waitlist-modal" class="modal-dialog">
         <div class="modal-content">
             <button type="button" class="modal-close" aria-label="Close modal">&times;</button>
-            
+
             <!-- FORM STATE -->
             <div id="modal-form-state">
                 <h2>Join the waitlist</h2>
                 <p>Enter your name and email to receive early access and launch updates.</p>
-                <form id="waitlist-form" action="https://docs.google.com/forms/d/e/1FAIpQLSdUuVDibH2Us4bG0SPvj6y3qYuLapRsZuJnQyUuUZq7u2XCcA/formResponse" method="POST" target="hidden_iframe">
+                <form id="waitlist-form"
+                    action="https://docs.google.com/forms/d/e/1FAIpQLSdUuVDibH2Us4bG0SPvj6y3qYuLapRsZuJnQyUuUZq7u2XCcA/formResponse"
+                    method="POST" target="hidden_iframe">
                     <div class="form-group">
                         <label for="waitlist-name">Name</label>
                         <input type="text" id="waitlist-name" name="entry.2093842319" required placeholder="Jane Doe"
@@ -1151,8 +1161,8 @@
                     </div>
                     <div class="form-group">
                         <label for="waitlist-email">Email</label>
-                        <input type="email" id="waitlist-email" name="entry.1512200587" required placeholder="jane@example.com"
-                            autocomplete="email">
+                        <input type="email" id="waitlist-email" name="entry.1512200587" required
+                            placeholder="jane@example.com" autocomplete="email">
                     </div>
                     <button type="submit" class="btn-submit">
                         Join Waitlist
@@ -1163,7 +1173,8 @@
             <!-- SUCCESS STATE -->
             <div id="modal-success-state" style="display: none;">
                 <div class="success-icon-wrap">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                        stroke-linejoin="round">
                         <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
                 </div>
@@ -1201,7 +1212,7 @@
 
         const openWaitlistModal = (e) => {
             e.preventDefault();
-            
+
             // Reset modal to initial form state
             formState.style.display = 'block';
             successState.style.display = 'none';
@@ -1252,13 +1263,13 @@
                 // Show the success screen state
                 formState.style.display = 'none';
                 successState.style.display = 'block';
-                
+
                 // Clear inputs and reset button state
                 modalForm.reset();
                 const submitBtn = modalForm.querySelector('.btn-submit');
                 submitBtn.classList.remove('loading');
                 submitBtn.disabled = false;
-                
+
                 // Auto close the modal after 3 seconds
                 setTimeout(() => {
                     closeWaitlistModal();
