@@ -7,7 +7,7 @@ generator client {
 // at your instance (workflow/status columns are stored as strings, so no other
 // changes are needed).
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -21,6 +21,8 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   runs        Run[]
+  owner      User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId    String?
 }
 
 /// A sandbox-custodied testnet keypair. Secrets are TESTNET ONLY.
@@ -72,4 +74,13 @@ model Schedule {
   createdAt DateTime  @default(now())
 
   @@index([status, runAt])
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  googleId  String?   @unique
+  projects  Project[]
+  createdAt DateTime  @default(now())
 }
