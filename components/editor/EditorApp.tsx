@@ -23,12 +23,20 @@ export function EditorApp() {
   const toWorkflow = useEditorStore((s) => s.toWorkflow);
   const loadWorkflow = useEditorStore((s) => s.loadWorkflow);
   const [showAI, setShowAI] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState<string | undefined>();
 
-  // Seed the canvas from a ?template=<id> query param (from the dashboard).
+  // Seed from query params: ?template=<id> (dashboard) or ?prompt=... (landing).
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("template");
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("template");
     const template = id ? getTemplate(id) : undefined;
     if (template) loadWorkflow(templateToWorkflow(template));
+
+    const prompt = params.get("prompt");
+    if (prompt) {
+      setAiPrompt(prompt);
+      setShowAI(true);
+    }
   }, [loadWorkflow]);
 
   const [showExport, setShowExport] = useState(false);
@@ -139,7 +147,7 @@ export function EditorApp() {
         </div>
       </div>
 
-      <AIBuilder open={showAI} onClose={() => setShowAI(false)} />
+      <AIBuilder open={showAI} onClose={() => setShowAI(false)} initialPrompt={aiPrompt} />
       <ExportDialog open={showExport} onClose={() => setShowExport(false)} />
       <WalletVault open={showVault} onClose={() => setShowVault(false)} />
       <ScheduleDialog open={showSchedule} onClose={() => setShowSchedule(false)} />

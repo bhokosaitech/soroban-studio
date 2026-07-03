@@ -45,9 +45,28 @@ export function BlockNode({ type, data, selected }: NodeProps) {
         </div>
       </div>
 
-      {def.handles.source && (
-        <Handle type="source" position={Position.Bottom} style={{ background: cat.dot }} />
-      )}
+      {def.handles.source &&
+        (def.outputs ? (
+          <div className="flex border-t border-border">
+            {def.outputs.map((o, i) => (
+              <div
+                key={o.id}
+                className="relative flex-1 py-1 text-center text-[10px] font-semibold"
+                style={{ color: o.color }}
+              >
+                {o.label}
+                <Handle
+                  id={o.id}
+                  type="source"
+                  position={Position.Bottom}
+                  style={{ left: `${((i + 0.5) / def.outputs!.length) * 100}%`, background: o.color }}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Handle type="source" position={Position.Bottom} style={{ background: cat.dot }} />
+        ))}
     </div>
   );
 }
@@ -65,7 +84,26 @@ function summarize(type: string, f: Record<string, unknown>): string {
       return typeof f.url === "string" ? f.url.replace(/^https?:\/\//, "") : "";
     case "create-invoice":
       return f.amount ? `${f.amount} ${f.asset ?? ""}` : "";
+    case "condition":
+      return conditionSummary(f);
     default:
       return "";
   }
+}
+
+const OP_SHORT: Record<string, string> = { gt: ">", gte: "≥", lt: "<", lte: "≤", eq: "=", neq: "≠" };
+const SUBJECT_SHORT: Record<string, string> = {
+  balance: "balance",
+  lastAmount: "last amount",
+  lastStatus: "last tx",
+  custom: "value",
+};
+
+function conditionSummary(f: Record<string, unknown>): string {
+  const subject = String(f.subject ?? "balance");
+  if (subject === "lastStatus") return `last tx ${f.status ?? "succeeded"}?`;
+  const subj = SUBJECT_SHORT[subject] ?? "value";
+  const op = OP_SHORT[String(f.op ?? "gte")] ?? "";
+  const val = f.value ?? "?";
+  return `${subj} ${op} ${val}`;
 }

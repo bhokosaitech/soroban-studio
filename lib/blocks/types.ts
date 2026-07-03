@@ -37,6 +37,12 @@ export interface BlockField {
   default?: string | number | boolean;
   /** Options for `select` fields. */
   options?: { label: string; value: string }[];
+  /**
+   * Only show this field when another field has one of these values. Lets a
+   * block reveal fields based on earlier choices (e.g. a "custom value" input
+   * that only appears when the check is set to "custom").
+   */
+  showIf?: { field: string; in: string[] };
 }
 
 /** How many connection points a block exposes. */
@@ -57,6 +63,12 @@ export interface BlockDefinition {
   icon: string;
   fields: BlockField[];
   handles: BlockHandles;
+  /**
+   * Named source outputs for branching blocks (e.g. a condition's pass/fail).
+   * When present, the node renders one labelled source handle per output and
+   * the executor follows only the branch that matches the block's result.
+   */
+  outputs?: { id: string; label: string; color: string }[];
   /**
    * Whether this block performs a real network operation in the sandbox
    * (vs. a pure client-side/logic step). Drives sandbox execution + costing.

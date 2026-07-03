@@ -76,6 +76,17 @@ export async function addTrustline(source: Keypair, assetCode: string): Promise<
   return res.hash;
 }
 
+/** Native (XLM) balance of an account. Returns 0 if the account is missing. */
+export async function getNativeBalance(publicKey: string): Promise<number> {
+  try {
+    const account = await horizon.loadAccount(publicKey);
+    const native = account.balances.find((b) => b.asset_type === "native");
+    return native ? Number(native.balance) : 0;
+  } catch {
+    return 0;
+  }
+}
+
 /** Confirm a transaction exists and succeeded. */
 export async function verifyTransaction(hash: string): Promise<{
   successful: boolean;

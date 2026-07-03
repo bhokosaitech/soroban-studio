@@ -70,14 +70,20 @@ export function Inspector() {
         {def.fields.length === 0 && (
           <p className="text-[12px] text-muted">This block has no configuration.</p>
         )}
-        {def.fields.map((field) => (
-          <Field
-            key={field.key}
-            field={field}
-            value={fields[field.key]}
-            onChange={(v) => updateField(node.id, field.key, v)}
-          />
-        ))}
+        {def.fields
+          .filter((field) => {
+            if (!field.showIf) return true;
+            const current = String(fields[field.showIf.field] ?? "");
+            return field.showIf.in.includes(current);
+          })
+          .map((field) => (
+            <Field
+              key={field.key}
+              field={field}
+              value={fields[field.key]}
+              onChange={(v) => updateField(node.id, field.key, v)}
+            />
+          ))}
       </div>
       <style jsx>{inputStyle}</style>
     </aside>

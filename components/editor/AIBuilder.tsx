@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles, X } from "lucide-react";
 import { useEditorStore } from "@/lib/store/editor";
 import type { Workflow } from "@/lib/workflow";
@@ -11,12 +11,25 @@ const EXAMPLES = [
   "Generate an invoice for 50 USDC and notify me when it's paid",
 ];
 
-export function AIBuilder({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AIBuilder({
+  open,
+  onClose,
+  initialPrompt,
+}: {
+  open: boolean;
+  onClose: () => void;
+  initialPrompt?: string;
+}) {
   const loadWorkflow = useEditorStore((s) => s.loadWorkflow);
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<string | null>(null);
+
+  // Seed from a prompt passed in (e.g. the landing-page hero input).
+  useEffect(() => {
+    if (open && initialPrompt) setPrompt(initialPrompt);
+  }, [open, initialPrompt]);
 
   if (!open) return null;
 

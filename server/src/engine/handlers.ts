@@ -5,6 +5,7 @@ import {
   buildInvoiceUri,
   createFundedKeypair,
   fundWithFriendbot,
+  getNativeBalance,
   muxedAddress,
   sendPayment,
   verifyTransaction,
@@ -154,8 +155,8 @@ const HANDLERS: Record<string, BlockHandler> = {
         amount,
         memo: str(node.data.memo),
       });
-      ctx.outputs[node.id] = { txHash: hash };
-      ctx.outputs._last = { txHash: hash };
+      ctx.outputs[node.id] = { txHash: hash, amount };
+      ctx.outputs._last = { txHash: hash, amount, status: "succeeded" };
       ctx.emit({
         nodeId: node.id,
         blockType: node.type,
@@ -214,7 +215,7 @@ const HANDLERS: Record<string, BlockHandler> = {
     });
     if (!result) throw new Error(`No matching payment within ${timeout}s.`);
     ctx.outputs[node.id] = { amount: result.amount, from: result.from, txHash: result.txHash };
-    ctx.outputs._last = { txHash: result.txHash };
+    ctx.outputs._last = { txHash: result.txHash, amount: result.amount, status: "succeeded" };
     ctx.emit({
       nodeId: node.id,
       blockType: node.type,
@@ -258,21 +259,50 @@ const HANDLERS: Record<string, BlockHandler> = {
   },
 
   condition: async (node, ctx) => {
-    const left = str(node.data.left) ?? "";
-    const right = str(node.data.right) ?? "";
-    const op = str(node.data.op) ?? "eq";
-    const ln = Number(left);
-    const rn = Number(right);
-    const numeric = Number.isFinite(ln) && Number.isFinite(rn);
-    let result = false;
-    switch (op) {
-      case "gte": result = numeric && ln >= rn; break;
-      case "lte": result = numeric && ln <= rn; break;
-      case "neq": result = left !== right; break;
-      default: result = left === right;
+    const subject = str(node.data.subject) ?? "custom";
+
+    // "Last transaction status" — a simple succeeded/failed check.
+    if (subject === "lastStatus") {
+      const want = str(node.data.status) ?? "succeeded";
+      const actual = str(ctx.outputs._last?.status) ?? "unknown";
+      const result = actual === want;
+      ctx.outputs[node.id] = { result };
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: result ? "success" : "warn",
+        message: `Condition: last transaction ${actual}, expected ${want} → ${result ? "pass" : "fail"}`,
+      });
+      return;
     }
-    ctx.outputs[node.id] = { result };
-    ctx.emit({ nodeId: node.id, blockType: node.type, level: "info", message: `Condition ${op}: ${result}` });
+
+    // Numeric/text comparison against a value.
+    let left: number | string;
+    let label: string;
+    if (subject === "balance") {
+      const account = requireAccount(ctx);
+      left = await getNativeBalance(account.publicKey());
+      label = "wallet balance";
+    } else if (subject === "lastAmount") {
+      left = Number(ctx.outputs._last?.amount ?? NaN);
+      label = "last payment amount";
+    } else {
+      const custom = str(node.data.customLeft) ?? "";
+      left = asNumberOrString(custom);
+      label = "value";
+    }
+
+    const right = asNumberOrString(str(node.data.value) ?? "");
+    const op = str(node.data.op) ?? "gte";
+    const result = compareValues(left, right, op);
+
+    ctx.outputs[node.id] = { result, left };
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: result ? "success" : "warn",
+      message: `Condition: ${label} (${left}) ${OP_LABEL[op] ?? op} ${right} → ${result ? "pass" : "fail"}`,
+    });
   },
 
   delay: async (node, ctx) => {
@@ -365,6 +395,33 @@ function extractResultCodes(e: unknown): string[] {
   const data = (e as { response?: { data?: { extras?: { result_codes?: { operations?: string[]; transaction?: string } } } } })?.response?.data;
   const rc = data?.extras?.result_codes;
   return [...(rc?.operations ?? []), ...(rc?.transaction ? [rc.transaction] : [])];
+}
+
+const OP_LABEL: Record<string, string> = {
+  gt: "is greater than",
+  gte: "is greater than or equal to",
+  lt: "is less than",
+  lte: "is less than or equal to",
+  eq: "is equal to",
+  neq: "is not equal to",
+};
+
+function asNumberOrString(v: string): number | string {
+  if (v.trim() === "") return v;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : v;
+}
+
+function compareValues(left: number | string, right: number | string, op: string): boolean {
+  const numeric = typeof left === "number" && typeof right === "number";
+  switch (op) {
+    case "gt": return numeric && left > right;
+    case "gte": return numeric && left >= right;
+    case "lt": return numeric && left < right;
+    case "lte": return numeric && left <= right;
+    case "neq": return String(left) !== String(right);
+    default: return String(left) === String(right); // eq
+  }
 }
 
 export function getHandler(type: string): BlockHandler | undefined {
