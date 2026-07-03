@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * Soroban Studio design tokens
+ * Light, editorial, calm — DM Serif for display, Instrument Sans for
+ * body, DM Mono for code/labels. Accent is Stellar blue.
+ * ------------------------------------------------------------------ */
+:root {
+  --white: #ffffff;
+  --off: #f8f7f4;
+  --ink: #111110;
+  --muted: #6b6a66;
+  --border: #e4e2db;
+  --accent: #1a6cf2;
+  --accent-light: #eef3fe;
+  --radius: 10px;
+
+  /* semantic node colors used by the visual editor */
+  --node-wallet: #1a6cf2;
+  --node-payment: #16a34a;
+  --node-asset: #d97706;
+  --node-contract: #7c3aed;
+  --node-automation: #db2777;
+
+  --background: var(--white);
+  --foreground: var(--ink);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-off: var(--off);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-dm-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-dm-mono), ui-monospace, SFMono-Regular, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scroll-reveal helper (used by landing sections) */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.pulse {
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared button primitives (used by editor toolbar + landing)
+ * ------------------------------------------------------------------ */
+.btn-dark,
+.btn-outline,
+.btn-ghost,
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+.btn-dark {
+  background: var(--ink);
+  color: var(--white);
+}
+.btn-dark:hover:not(:disabled) {
+  background: #000;
+}
+.btn-outline {
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+.btn-outline:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--off);
+  color: var(--ink);
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--white);
+  padding: 11px 22px;
+  font-size: 15px;
+  border-radius: 9px;
+}
+.btn-primary:hover:not(:disabled) {
+  background: #155ad0;
+}
+button:disabled {
+  cursor: not-allowed;
+}

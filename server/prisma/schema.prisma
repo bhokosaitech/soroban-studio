@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// SQLite by default — zero infrastructure, no Docker, tiny footprint.
+// To use Postgres instead: set provider = "postgresql" and point DATABASE_URL
+// at your instance (workflow/status columns are stored as strings, so no other
+// changes are needed).
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// A saved workflow (the portable Workflow JSON, stored as a JSON string).
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  network     String   @default("testnet")
+  workflow    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  runs        Run[]
+}
+
+/// A sandbox-custodied testnet keypair. Secrets are TESTNET ONLY.
+model Wallet {
+  id        String   @id @default(cuid())
+  publicKey String   @unique
+  secret    String
+  network   String   @default("testnet")
+  label     String?
+  funded    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+/// One execution of a workflow. `status`: pending | running | succeeded | failed.
+model Run {
+  id         String    @id @default(cuid())
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId  String?
+  network    String    @default("testnet")
+  workflow   String
+  status     String    @default("pending")
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+  logs       RunLog[]
+}
+
+model RunLog {
+  id        String   @id @default(cuid())
+  run       Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId     String
+  nodeId    String
+  blockType String
+  level     String
+  message   String
+  txHash    String?
+  createdAt DateTime @default(now())
+
+  @@index([runId])
+}
+
+/// A future workflow execution. `status`: scheduled | running | done | failed | canceled.
+model Schedule {
+  id        String    @id @default(cuid())
+  name      String
+  workflow  String
+  runAt     DateTime
+  status    String    @default("scheduled")
+  lastRunId String?
+  createdAt DateTime  @default(now())
+
+  @@index([status, runAt])
+}
