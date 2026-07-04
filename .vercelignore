@@ -1,3 +1,3 @@
 # Exclude the separate backend app from Vercel deployments
-server/
-server/**
+/server
+/server/**
