@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
   const run = await prisma.run.create({
     data: {
-      network: "testnet",
+      network: wf.meta.network,
       workflow: JSON.stringify(wf),
       status: "pending",
       projectId: typeof body?.projectId === "string" ? body.projectId : undefined,

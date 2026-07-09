@@ -43,6 +43,11 @@ export interface BlockField {
    * that only appears when the check is set to "custom").
    */
   showIf?: { field: string; in: string[] };
+  /**
+   * Disable (and force off) this field when the workflow targets mainnet. Used
+   * for testnet-only capabilities like Friendbot auto-funding.
+   */
+  disabledOnMainnet?: boolean;
 }
 
 /** How many connection points a block exposes. */

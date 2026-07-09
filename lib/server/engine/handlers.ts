@@ -1,10 +1,8 @@
 import { Keypair } from "@stellar/stellar-sdk";
-import { NETWORK, sorobanRpc } from "../stellar/network";
 import {
   addTrustline,
   buildInvoiceUri,
   createFundedKeypair,
-  fundWithFriendbot,
   getNativeBalance,
   muxedAddress,
   sendPayment,
@@ -37,9 +35,12 @@ const HANDLERS: Record<string, BlockHandler> = {
   },
 
   "create-wallet": async (node, ctx) => {
-    const fund = node.data.fund !== false;
+    // Friendbot exists on testnet only — on mainnet the account is created
+    // unfunded and the user must fund it themselves.
+    const canFund = !!ctx.net.friendbotUrl;
+    const fund = canFund && node.data.fund !== false;
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "network", message: "Generating keypair…" });
-    const kp = fund ? await createFundedKeypair() : Keypair.random();
+    const kp = fund ? await createFundedKeypair(ctx.net) : Keypair.random();
     ctx.currentAccount = kp;
     ctx.outputs[node.id] = { publicKey: kp.publicKey() };
     await ctx.saveWallet(kp, "create-wallet");
@@ -49,6 +50,14 @@ const HANDLERS: Record<string, BlockHandler> = {
       level: "success",
       message: `Wallet created: ${kp.publicKey()}${fund ? " (funded via Friendbot)" : ""}`,
     });
+    if (!fund && ctx.net.id === "mainnet") {
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "info",
+        message: "Wallet is unfunded — fund it manually on mainnet before it can transact.",
+      });
+    }
   },
 
   "use-wallet": async (node, ctx) => {
@@ -98,7 +107,7 @@ const HANDLERS: Record<string, BlockHandler> = {
     }
     // Sandbox: provision a custodial wallet so the run can sign. In production
     // this block connects Freighter in the browser instead.
-    const kp = await createFundedKeypair();
+    const kp = await createFundedKeypair(ctx.net);
     ctx.currentAccount = kp;
     ctx.outputs[node.id] = { publicKey: kp.publicKey() };
     await ctx.saveWallet(kp, "connect-wallet");
@@ -128,7 +137,7 @@ const HANDLERS: Record<string, BlockHandler> = {
     const account = requireAccount(ctx);
     const code = str(node.data.assetCode) ?? "USDC";
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "network", message: `Adding ${code} trustline…` });
-    const hash = await addTrustline(account, code);
+    const hash = await addTrustline(ctx.net, account, code);
     ctx.outputs[node.id] = { txHash: hash };
     ctx.outputs._last = { txHash: hash };
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "success", message: `Trustline set`, txHash: hash });
@@ -148,7 +157,7 @@ const HANDLERS: Record<string, BlockHandler> = {
       message: `Sending ${amount} ${asset} → ${destination}…`,
     });
     try {
-      const hash = await sendPayment({
+      const hash = await sendPayment(ctx.net, {
         source,
         destination,
         assetCode: asset,
@@ -161,7 +170,7 @@ const HANDLERS: Record<string, BlockHandler> = {
         nodeId: node.id,
         blockType: node.type,
         level: "success",
-        message: `Payment confirmed — ${NETWORK.explorerTx(hash)}`,
+        message: `Payment confirmed — ${ctx.net.explorerTx(hash)}`,
         txHash: hash,
       });
     } catch (e) {
@@ -204,6 +213,7 @@ const HANDLERS: Record<string, BlockHandler> = {
       message: `Watching ${address} for up to ${timeout}s…`,
     });
     const result = await waitForPayment({
+      net: ctx.net,
       address,
       assetCode: str(node.data.asset),
       minAmount: num(node.data.amount),
@@ -229,7 +239,7 @@ const HANDLERS: Record<string, BlockHandler> = {
     const hash = str(node.data.hash) ?? (ctx.outputs._last?.txHash as string | undefined);
     if (!hash) throw new Error("Verify Transaction needs a tx hash (or a prior tx to verify).");
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "network", message: `Verifying ${hash}…` });
-    const res = await verifyTransaction(hash);
+    const res = await verifyTransaction(ctx.net, hash);
     ctx.outputs[node.id] = { successful: res.successful, ledger: res.ledger };
     ctx.emit({
       nodeId: node.id,
@@ -281,7 +291,7 @@ const HANDLERS: Record<string, BlockHandler> = {
     let label: string;
     if (subject === "balance") {
       const account = requireAccount(ctx);
-      left = await getNativeBalance(account.publicKey());
+      left = await getNativeBalance(ctx.net, account.publicKey());
       label = "wallet balance";
     } else if (subject === "lastAmount") {
       left = Number(ctx.outputs._last?.amount ?? NaN);
@@ -361,7 +371,7 @@ const HANDLERS: Record<string, BlockHandler> = {
 async function contractPing(node: WorkflowNode, ctx: RunContext, label: string) {
   const contractId = str(node.data.contractId);
   try {
-    const latest = await sorobanRpc.getLatestLedger();
+    const latest = await ctx.net.sorobanRpc.getLatestLedger();
     ctx.emit({
       nodeId: node.id,
       blockType: node.type,

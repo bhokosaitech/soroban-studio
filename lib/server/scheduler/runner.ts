@@ -27,18 +27,23 @@ export async function runScheduleNow(scheduleId: string): Promise<void> {
     return;
   }
 
+  const wf = parsed.data;
   const run = await prisma.run.create({
-    data: { network: "testnet", workflow: schedule.workflow, status: "running" },
+    data: { network: wf.meta.network, workflow: schedule.workflow, status: "running" },
   });
 
   const logs: RunLogEvent[] = [];
   let status: "succeeded" | "failed" = "failed";
   try {
-    status = await executeWorkflow(parsed.data, {
+    status = await executeWorkflow(wf, {
       emit: (e) => logs.push(e),
       saveWallet: async (kp: Keypair, label) => {
+        // Headless run: no client to hand the secret to. Persist public
+        // metadata only — the private key is intentionally not stored, so a
+        // wallet created by a scheduled run is used within the run but not
+        // recoverable afterward.
         await prisma.wallet
-          .create({ data: { publicKey: kp.publicKey(), secret: kp.secret(), network: "testnet", label, funded: true } })
+          .create({ data: { publicKey: kp.publicKey(), secret: "", network: wf.meta.network, label, funded: true } })
           .catch(() => {});
       },
     });

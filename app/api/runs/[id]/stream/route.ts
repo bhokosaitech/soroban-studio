@@ -41,9 +41,19 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       await prisma.run.update({ where: { id: run.id }, data: { status: "running" } });
 
       const saveWallet = async (kp: Keypair, label: string) => {
+        // Client-custody model: hand the freshly generated secret to the
+        // browser over a dedicated SSE event (NOT added to `collected`, so it
+        // is never written to runLog), and persist public metadata only — the
+        // private key is intentionally not stored server-side.
+        send("wallet", {
+          publicKey: kp.publicKey(),
+          secret: kp.secret(),
+          network: workflow.meta.network,
+          label,
+        });
         await prisma.wallet
           .create({
-            data: { publicKey: kp.publicKey(), secret: kp.secret(), network: "testnet", label, funded: true },
+            data: { publicKey: kp.publicKey(), secret: "", network: workflow.meta.network, label, funded: true },
           })
           .catch(() => {}); // ignore duplicates
       };

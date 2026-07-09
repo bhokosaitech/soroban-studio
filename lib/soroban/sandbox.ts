@@ -1,6 +1,6 @@
 import { getBlock } from "@/lib/blocks/catalog";
 import { executionOrder, type Workflow } from "@/lib/workflow";
-import { getNetwork } from "./config";
+import { getNetwork, type NetworkConfig } from "./config";
 
 /**
  * Sandbox execution runtime (simulated).
@@ -60,7 +60,7 @@ export async function runSandbox(
     // Simulate latency for network blocks.
     if (def.network) await new Promise((r) => setTimeout(r, 250));
 
-    const detail = describeStep(node.type, node.data);
+    const detail = describeStep(node.type, node.data, net);
     push({
       nodeId: node.id,
       blockType: node.type,
@@ -91,10 +91,14 @@ export async function runSandbox(
   return { ok: true, logs };
 }
 
-function describeStep(type: string, data: Record<string, unknown>): string {
+function describeStep(type: string, data: Record<string, unknown>, net: NetworkConfig): string {
   switch (type) {
     case "create-wallet":
-      return data.fund ? "generating keypair + funding via Friendbot" : "generating keypair";
+      return data.fund && net.friendbotUrl
+        ? "generating keypair + funding via Friendbot"
+        : net.friendbotUrl
+          ? "generating keypair"
+          : "generating keypair (fund manually — no Friendbot on mainnet)";
     case "send-payment":
       return `sending ${data.amount ?? "?"} ${data.asset ?? "XLM"} → ${short(data.destination)}`;
     case "confidential-transfer":

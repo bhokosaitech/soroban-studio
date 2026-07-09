@@ -1,5 +1,6 @@
 import type { Keypair } from "@stellar/stellar-sdk";
 import type { WorkflowNode } from "../workflow-schema";
+import type { ServerNetwork } from "../stellar/network";
 
 export type LogLevel = "info" | "success" | "error" | "network" | "warn";
 
@@ -17,6 +18,8 @@ export interface RunLogEvent {
  * pass values between blocks (e.g. the wallet a payment should be signed with).
  */
 export interface RunContext {
+  /** The Stellar network this run executes against (resolved from meta.network). */
+  net: ServerNetwork;
   /** The active signer — set by create-wallet / connect-wallet / use-wallet. */
   currentAccount?: Keypair;
   /**

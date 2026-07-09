@@ -81,6 +81,7 @@ export function Inspector() {
               key={field.key}
               field={field}
               value={fields[field.key]}
+              network={meta.network}
               onChange={(v) => updateField(node.id, field.key, v)}
             />
           ))}
@@ -93,10 +94,12 @@ export function Inspector() {
 function Field({
   field,
   value,
+  network,
   onChange,
 }: {
   field: BlockField;
   value: unknown;
+  network?: "testnet" | "mainnet";
   onChange: (v: unknown) => void;
 }) {
   const label = (
@@ -111,15 +114,27 @@ function Field({
   }
 
   if (field.type === "boolean") {
+    const disabled = Boolean(field.disabledOnMainnet && network === "mainnet");
+    const checked = disabled ? false : Boolean(value);
     return (
-      <label className="flex cursor-pointer items-center gap-2 py-1">
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span className="text-[12px] text-ink">{field.label}</span>
-      </label>
+      <div>
+        <label
+          className={`flex items-center gap-2 py-1 ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+        >
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.checked)}
+          />
+          <span className="text-[12px] text-ink">{field.label}</span>
+        </label>
+        {disabled && (
+          <p className="mt-0.5 text-[11px] leading-snug text-muted">
+            Not available on mainnet — Friendbot funding is testnet-only.
+          </p>
+        )}
+      </div>
     );
   }
 

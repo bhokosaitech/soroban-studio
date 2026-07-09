@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
+import { NETWORK } from "@/lib/server/stellar/network";
 import { fundWithFriendbot } from "@/lib/server/stellar/operations";
 
 export const runtime = "nodejs";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   const kp = Keypair.random();
   try {
-    await fundWithFriendbot(kp.publicKey());
+    await fundWithFriendbot(NETWORK, kp.publicKey());
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   }

@@ -120,8 +120,55 @@ export function EditorApp() {
     }
 
     try {
-      // Real execution against Stellar testnet via the backend, streamed live.
-      await runWorkflowLive(wf, append, { signers, nodeSecrets });
+      // Real execution against Stellar via the backend, streamed live. Wallets
+      // created mid-run arrive over a dedicated channel: we show the keypair in
+      // the console and auto-save it to the client vault (the backend keeps no
+      // private keys).
+      const onWallet = (w: {
+        publicKey: string;
+        secret: string;
+        network: string;
+        label: string;
+      }) => {
+        append({
+          nodeId: "runtime",
+          blockType: "runtime",
+          level: "success",
+          message: `🔑 New wallet — public: ${w.publicKey}`,
+          at: Date.now(),
+        });
+        append({
+          nodeId: "runtime",
+          blockType: "runtime",
+          level: "warn",
+          message: `🔒 Secret key (store it now, shown once): ${w.secret}`,
+          at: Date.now(),
+        });
+        const vault = useVaultStore.getState();
+        if (vault.unlocked) {
+          void vault
+            .addWallet({ publicKey: w.publicKey, label: w.label, network: w.network, secret: w.secret })
+            .then(() =>
+              append({
+                nodeId: "runtime",
+                blockType: "runtime",
+                level: "info",
+                message: `Saved ${w.publicKey.slice(0, 6)}…${w.publicKey.slice(-4)} to your wallet vault.`,
+                at: Date.now(),
+              })
+            )
+            .catch(() => {});
+        } else {
+          append({
+            nodeId: "runtime",
+            blockType: "runtime",
+            level: "warn",
+            message: "Unlock your wallet vault (top bar) to save this wallet — otherwise copy the secret above now.",
+            at: Date.now(),
+          });
+        }
+      };
+      await runWorkflowLive(wf, append, { signers, nodeSecrets }, onWallet);
     } catch (e) {
       if (isBackendUnavailable(e)) {
         append({
@@ -178,7 +225,7 @@ export function EditorApp() {
       <ExportDialog open={showExport} onClose={() => setShowExport(false)} />
       <WalletVault open={showVault} onClose={() => setShowVault(false)} />
       <ScheduleDialog open={showSchedule} onClose={() => setShowSchedule(false)} />
-      <Guide />
+      <Guide hidden={showAI} />
     </ReactFlowProvider>
   );
 }

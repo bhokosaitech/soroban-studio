@@ -21,6 +21,14 @@ export interface RunSecrets {
   nodeSecrets?: Record<string, string>;
 }
 
+/** A wallet generated during a run — its secret is delivered to the client only. */
+export interface CreatedWallet {
+  publicKey: string;
+  secret: string;
+  network: string;
+  label: string;
+}
+
 /** Create a run on the backend and return its id. */
 async function createRun(workflow: Workflow, secrets?: RunSecrets): Promise<string> {
   let res: Response;
@@ -49,7 +57,8 @@ async function createRun(workflow: Workflow, secrets?: RunSecrets): Promise<stri
 export async function runWorkflowLive(
   workflow: Workflow,
   onLog: (log: RunLog) => void,
-  secrets?: RunSecrets
+  secrets?: RunSecrets,
+  onWallet?: (wallet: CreatedWallet) => void
 ): Promise<"succeeded" | "failed"> {
   const runId = await createRun(workflow, secrets);
 
@@ -61,6 +70,15 @@ export async function runWorkflowLive(
       sawAnyEvent = true;
       try {
         onLog(JSON.parse((e as MessageEvent).data) as RunLog);
+      } catch {
+        /* ignore malformed frame */
+      }
+    });
+
+    es.addEventListener("wallet", (e) => {
+      sawAnyEvent = true;
+      try {
+        onWallet?.(JSON.parse((e as MessageEvent).data) as CreatedWallet);
       } catch {
         /* ignore malformed frame */
       }

@@ -63,7 +63,7 @@ interface Rect {
   height: number;
 }
 
-export function Guide() {
+export function Guide({ hidden = false }: { hidden?: boolean }) {
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
@@ -142,14 +142,16 @@ export function Guide() {
 
   return (
     <>
-      {/* Persistent help button */}
-      <button
-        onClick={restart}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-1.5 rounded-full border border-border bg-white px-3.5 py-2 text-[13px] font-medium text-ink shadow-md transition-colors hover:bg-off"
-        title="Show the guide"
-      >
-        <HelpCircle size={15} className="text-accent" /> Guide
-      </button>
+      {/* Persistent help button — hidden while the AI drawer covers this corner. */}
+      {!hidden && (
+        <button
+          onClick={restart}
+          className="fixed bottom-5 right-5 z-40 flex items-center gap-1.5 rounded-full border border-border bg-white px-3.5 py-2 text-[13px] font-medium text-ink shadow-md transition-colors hover:bg-off"
+          title="Show the guide"
+        >
+          <HelpCircle size={15} className="text-accent" /> Guide
+        </button>
+      )}
 
       {active && (
         <div className="pointer-events-none fixed inset-0 z-[60]">

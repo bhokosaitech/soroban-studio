@@ -1,5 +1,6 @@
 import type { Keypair } from "@stellar/stellar-sdk";
 import { executionOrder, type Workflow } from "../workflow-schema";
+import { getServerNetwork } from "../stellar/network";
 import { getHandler } from "./handlers";
 import type { RunContext, RunLogEvent } from "./types";
 
@@ -24,7 +25,9 @@ export async function executeWorkflow(
   wf: Workflow,
   cb: ExecuteCallbacks
 ): Promise<"succeeded" | "failed"> {
+  const net = getServerNetwork(wf.meta.network);
   const ctx: RunContext = {
+    net,
     outputs: {},
     signers: cb.signers,
     nodeSecrets: cb.nodeSecrets,
@@ -32,7 +35,10 @@ export async function executeWorkflow(
     emit: (event) => cb.emit({ ...event, at: Date.now() }),
   };
 
-  ctx.emit({ nodeId: "runtime", blockType: "runtime", level: "info", message: `Executing "${wf.meta.name}" on testnet.` });
+  ctx.emit({ nodeId: "runtime", blockType: "runtime", level: "info", message: `Executing "${wf.meta.name}" on ${net.id}.` });
+  if (net.id === "mainnet") {
+    ctx.emit({ nodeId: "runtime", blockType: "runtime", level: "warn", message: "⚠ MAINNET — real funds will move." });
+  }
 
   const order = executionOrder(wf);
   const labelOf = (id: string) => wf.nodes.find((n) => n.id === id)?.type ?? id;

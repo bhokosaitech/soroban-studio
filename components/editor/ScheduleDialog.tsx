@@ -12,11 +12,11 @@ import {
   type Schedule,
 } from "@/lib/api";
 import { Backdrop } from "./Backdrop";
+import { DateTimePicker } from "./DateTimePicker";
 
 export function ScheduleDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toWorkflow = useEditorStore((s) => s.toWorkflow);
   const [when, setWhen] = useState("");
-  const [minWhen, setMinWhen] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -26,7 +26,6 @@ export function ScheduleDialog({ open, onClose }: { open: boolean; onClose: () =
     if (open) {
       setError(null);
       setOk(null);
-      setMinWhen(nowLocalInput());
       refresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

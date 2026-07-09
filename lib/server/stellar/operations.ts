@@ -7,12 +7,15 @@ import {
   Operation,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { NETWORK, horizon } from "./network";
+import type { ServerNetwork } from "./network";
 import { isNative, resolveAsset } from "./assets";
 
 /** Fund an account with test XLM via Friendbot. Idempotent-ish on testnet. */
-export async function fundWithFriendbot(publicKey: string): Promise<void> {
-  const res = await fetch(`${NETWORK.friendbotUrl}?addr=${encodeURIComponent(publicKey)}`);
+export async function fundWithFriendbot(net: ServerNetwork, publicKey: string): Promise<void> {
+  if (!net.friendbotUrl) {
+    throw new Error(`Friendbot is unavailable on ${net.id} — fund this account manually.`);
+  }
+  const res = await fetch(`${net.friendbotUrl}?addr=${encodeURIComponent(publicKey)}`);
   if (!res.ok) {
     const body = await res.text();
     // Already-funded accounts return 400 — treat as non-fatal.
@@ -23,9 +26,9 @@ export async function fundWithFriendbot(publicKey: string): Promise<void> {
 }
 
 /** Generate a new keypair and fund it on testnet. */
-export async function createFundedKeypair(): Promise<Keypair> {
+export async function createFundedKeypair(net: ServerNetwork): Promise<Keypair> {
   const kp = Keypair.random();
-  await fundWithFriendbot(kp.publicKey());
+  await fundWithFriendbot(net, kp.publicKey());
   return kp;
 }
 
@@ -38,11 +41,11 @@ export interface PaymentInput {
 }
 
 /** Build, sign, and submit a classic payment. Returns the tx hash. */
-export async function sendPayment(input: PaymentInput): Promise<string> {
-  const account = await horizon.loadAccount(input.source.publicKey());
+export async function sendPayment(net: ServerNetwork, input: PaymentInput): Promise<string> {
+  const account = await net.horizon.loadAccount(input.source.publicKey());
   const builder = new TransactionBuilder(account, {
     fee: BASE_FEE,
-    networkPassphrase: NETWORK.passphrase,
+    networkPassphrase: net.passphrase,
   }).addOperation(
     Operation.payment({
       destination: input.destination,
@@ -55,32 +58,32 @@ export async function sendPayment(input: PaymentInput): Promise<string> {
 
   const tx = builder.setTimeout(60).build();
   tx.sign(input.source);
-  const res = await horizon.submitTransaction(tx);
+  const res = await net.horizon.submitTransaction(tx);
   return res.hash;
 }
 
 /** Establish a trustline so the source can hold a non-native asset. */
-export async function addTrustline(source: Keypair, assetCode: string): Promise<string> {
+export async function addTrustline(net: ServerNetwork, source: Keypair, assetCode: string): Promise<string> {
   if (isNative(assetCode)) {
     throw new Error("XLM is native — no trustline required.");
   }
-  const account = await horizon.loadAccount(source.publicKey());
+  const account = await net.horizon.loadAccount(source.publicKey());
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
-    networkPassphrase: NETWORK.passphrase,
+    networkPassphrase: net.passphrase,
   })
     .addOperation(Operation.changeTrust({ asset: resolveAsset(assetCode) }))
     .setTimeout(60)
     .build();
   tx.sign(source);
-  const res = await horizon.submitTransaction(tx);
+  const res = await net.horizon.submitTransaction(tx);
   return res.hash;
 }
 
 /** Native (XLM) balance of an account. Returns 0 if the account is missing. */
-export async function getNativeBalance(publicKey: string): Promise<number> {
+export async function getNativeBalance(net: ServerNetwork, publicKey: string): Promise<number> {
   try {
-    const account = await horizon.loadAccount(publicKey);
+    const account = await net.horizon.loadAccount(publicKey);
     const native = account.balances.find((b) => b.asset_type === "native");
     return native ? Number(native.balance) : 0;
   } catch {
@@ -89,11 +92,11 @@ export async function getNativeBalance(publicKey: string): Promise<number> {
 }
 
 /** Confirm a transaction exists and succeeded. */
-export async function verifyTransaction(hash: string): Promise<{
+export async function verifyTransaction(net: ServerNetwork, hash: string): Promise<{
   successful: boolean;
   ledger: number;
 }> {
-  const tx = await horizon.transactions().transaction(hash).call();
+  const tx = await net.horizon.transactions().transaction(hash).call();
   return { successful: tx.successful, ledger: tx.ledger_attr };
 }
 
@@ -123,6 +126,7 @@ export function buildInvoiceUri(params: {
 }
 
 export interface WaitForPaymentInput {
+  net: ServerNetwork;
   address: string;
   assetCode?: string;
   minAmount?: number;
@@ -146,7 +150,7 @@ export async function waitForPayment(
     attempt += 1;
     input.onPoll?.(attempt);
     try {
-      const page = await horizon
+      const page = await input.net.horizon
         .payments()
         .forAccount(input.address)
         .order("desc")

@@ -1,6 +1,6 @@
 import { getBlock } from "@/lib/blocks/catalog";
 import { executionOrder, type Workflow } from "@/lib/workflow";
-import { getNetwork } from "@/lib/soroban/config";
+import { getNetwork, type NetworkConfig } from "@/lib/soroban/config";
 
 /**
  * Generate a runnable Node.js script from a workflow using @stellar/stellar-sdk.
@@ -17,7 +17,7 @@ export function generateJavaScript(wf: Workflow): string {
     .map((node) => {
       const def = getBlock(node.type);
       if (!def) return `  // unknown block: ${node.type}`;
-      return `  // ${def.label}\n${snippet(node.type, node.data)}`;
+      return `  // ${def.label}\n${snippet(node.type, node.data, net)}`;
     })
     .join("\n\n");
 
@@ -46,14 +46,16 @@ main().catch((err) => {
 `;
 }
 
-function snippet(type: string, data: Record<string, unknown>): string {
+function snippet(type: string, data: Record<string, unknown>, net: NetworkConfig): string {
   switch (type) {
     case "create-wallet":
       return `  const account = Keypair.random();
   console.log("Public key:", account.publicKey());${
-    data.fund
-      ? `\n  await fetch(\`https://friendbot.stellar.org?addr=\${account.publicKey()}\`);`
-      : ""
+    data.fund && net.friendbotUrl
+      ? `\n  await fetch(\`${net.friendbotUrl}?addr=\${account.publicKey()}\`);`
+      : net.friendbotUrl
+        ? ""
+        : `\n  // Fund this account manually on ${net.label} — no Friendbot available.`
   }`;
     case "send-payment":
       return `  // send ${data.amount ?? "?"} ${data.asset ?? "XLM"} to ${data.destination ?? "<dest>"}
