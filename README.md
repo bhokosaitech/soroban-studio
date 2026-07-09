@@ -3,6 +3,8 @@
 A visual development environment for building **Stellar / Soroban** applications with
 drag-and-drop workflows and AI-assisted generation — then exporting production-ready code.
 
+[![Soroban Studio Demo](https://img.youtube.com/vi/YTBFQ-v_unQ/0.jpg)](https://youtu.be/YTBFQ-v_unQ)
+
 Assemble apps from Stellar-native blocks (Create Wallet, Send Payment, Invoke Contract,
 Wait for Payment, Trigger Webhook, …), test them in a sandbox, and export runnable
 JavaScript (`@stellar/stellar-sdk`) and a Soroban Rust contract skeleton.
