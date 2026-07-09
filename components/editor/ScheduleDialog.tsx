@@ -16,6 +16,7 @@ import { Backdrop } from "./Backdrop";
 export function ScheduleDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toWorkflow = useEditorStore((s) => s.toWorkflow);
   const [when, setWhen] = useState("");
+  const [minWhen, setMinWhen] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -25,6 +26,7 @@ export function ScheduleDialog({ open, onClose }: { open: boolean; onClose: () =
     if (open) {
       setError(null);
       setOk(null);
+      setMinWhen(nowLocalInput());
       refresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,6 +97,7 @@ export function ScheduleDialog({ open, onClose }: { open: boolean; onClose: () =
           <input
             type="datetime-local"
             value={when}
+            min={minWhen}
             onChange={(e) => setWhen(e.target.value)}
             className="flex-1 rounded-lg border border-border px-3 py-2 text-[14px] outline-none focus:border-accent focus:ring-4 focus:ring-accent-light"
           />
@@ -138,4 +141,12 @@ function StatusBadge({ status }: { status: string }) {
   const color =
     status === "done" ? "text-green-600" : status === "failed" ? "text-red-600" : status === "canceled" ? "text-muted" : "text-accent";
   return <span className={color}>{status}</span>;
+}
+
+/** Current local time formatted for a `datetime-local` input (YYYY-MM-DDTHH:mm). */
+function nowLocalInput(): string {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

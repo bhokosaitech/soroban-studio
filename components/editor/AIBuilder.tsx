@@ -93,10 +93,15 @@ export function AIBuilder({
   }
 
   return (
-    <aside
-      data-guide="ai-panel"
-      className="flex w-96 shrink-0 flex-col border-l border-border bg-white"
+    <div
+      className="fixed inset-0 z-40 flex justify-end bg-ink/40 backdrop-blur-sm backdrop-fade"
+      onClick={onClose}
     >
+      <aside
+        data-guide="ai-panel"
+        onClick={(e) => e.stopPropagation()}
+        className="drawer-in flex h-full w-96 max-w-[90vw] shrink-0 flex-col border-l border-border bg-white shadow-xl"
+      >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <h2 className="flex items-center gap-2 text-[14px] font-semibold text-ink">
@@ -169,6 +174,7 @@ export function AIBuilder({
         </p>
       </div>
     </aside>
+    </div>
   );
 }
 

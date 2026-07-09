@@ -171,10 +171,10 @@ export function EditorApp() {
             )}
           </div>
           <Inspector />
-          <AIBuilder open={showAI} onClose={() => setShowAI(false)} initialPrompt={aiPrompt} />
         </div>
       </div>
 
+      <AIBuilder open={showAI} onClose={() => setShowAI(false)} initialPrompt={aiPrompt} />
       <ExportDialog open={showExport} onClose={() => setShowExport(false)} />
       <WalletVault open={showVault} onClose={() => setShowVault(false)} />
       <ScheduleDialog open={showSchedule} onClose={() => setShowSchedule(false)} />

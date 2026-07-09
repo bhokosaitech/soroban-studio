@@ -78,6 +78,22 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Right-anchored drawer (AI Builder overlay) + its backdrop fade. */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.drawer-in {
+  animation: slideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes backdropFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.backdrop-fade {
+  animation: backdropFade 0.2s ease;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.35; }
@@ -169,7 +185,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .aurora, .text-gradient, .float, .pulse { animation: none; }
+  .aurora, .text-gradient, .float, .pulse, .drawer-in, .backdrop-fade { animation: none; }
   .reveal { transition: none; filter: none; transform: none; opacity: 1; }
 }
 
