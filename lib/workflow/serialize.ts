@@ -86,6 +86,78 @@ export function toFlow(workflow: Workflow): { nodes: FlowNode[]; edges: Edge[] }
 }
 
 /**
+ * Parse + validate untrusted workflow JSON (e.g. an imported file) into a
+ * Workflow. Throws an Error with a human-readable message if the shape is wrong.
+ * Unknown block types are rejected here so import fails loudly rather than
+ * loading nodes the editor can't render.
+ */
+export function deserializeWorkflow(raw: unknown): Workflow {
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error("Not a workflow — expected a JSON object.");
+  }
+  const obj = raw as Record<string, unknown>;
+
+  const meta = obj.meta as Record<string, unknown> | undefined;
+  if (!meta || typeof meta.name !== "string") {
+    throw new Error("Missing meta.name — is this a Soroban Studio workflow?");
+  }
+  const network = meta.network === "mainnet" ? "mainnet" : "testnet";
+
+  if (!Array.isArray(obj.nodes) || !Array.isArray(obj.edges)) {
+    throw new Error("Workflow must have nodes and edges arrays.");
+  }
+
+  const nodes: WorkflowNode[] = obj.nodes.map((n, i) => {
+    const node = n as Record<string, unknown>;
+    if (typeof node.id !== "string" || typeof node.type !== "string") {
+      throw new Error(`Node ${i} is missing an id or type.`);
+    }
+    if (!getBlock(node.type)) {
+      throw new Error(`Unknown block type "${node.type}" — can't import.`);
+    }
+    const pos = node.position as Record<string, unknown> | undefined;
+    return {
+      id: node.id,
+      type: node.type,
+      position: {
+        x: typeof pos?.x === "number" ? pos.x : 0,
+        y: typeof pos?.y === "number" ? pos.y : 0,
+      },
+      data: (node.data as Record<string, unknown>) ?? {},
+    };
+  });
+
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const edges: WorkflowEdge[] = obj.edges.map((e, i) => {
+    const edge = e as Record<string, unknown>;
+    if (typeof edge.source !== "string" || typeof edge.target !== "string") {
+      throw new Error(`Edge ${i} is missing a source or target.`);
+    }
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      throw new Error(`Edge ${i} references a node that doesn't exist.`);
+    }
+    return {
+      id: typeof edge.id === "string" ? edge.id : `e-${edge.source}-${edge.target}-${i}`,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: typeof edge.sourceHandle === "string" ? edge.sourceHandle : undefined,
+      label: typeof edge.label === "string" ? edge.label : undefined,
+    };
+  });
+
+  return {
+    version: WORKFLOW_SCHEMA_VERSION,
+    meta: {
+      name: meta.name,
+      description: typeof meta.description === "string" ? meta.description : undefined,
+      network,
+    },
+    nodes,
+    edges,
+  };
+}
+
+/**
  * Lightweight structural validation. Returns a list of human-readable problems
  * (empty === valid). Used before sandbox runs and code export.
  */

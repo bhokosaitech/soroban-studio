@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { useEditorStore } from "@/lib/store/editor";
 import { runSandbox, type RunLog } from "@/lib/soroban/sandbox";
-import { emptyWorkflow, extractNodeSecrets, validateWorkflow } from "@/lib/workflow";
+import { deserializeWorkflow, emptyWorkflow, extractNodeSecrets, validateWorkflow } from "@/lib/workflow";
 import { getTemplate, templateToWorkflow } from "@/lib/templates";
 import { isBackendUnavailable, runWorkflowLive, fetchProject } from "@/lib/api";
 import { Toolbar } from "./Toolbar";
@@ -27,6 +27,23 @@ export function EditorApp() {
   const [showAI, setShowAI] = useState(false);
   const [aiPrompt, setAiPrompt] = useState<string | undefined>();
   const saveStatus = useAutoSave();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  // Import a workflow from a `.json` file exported by Soroban Studio. Loads it
+  // onto the canvas as a NEW workflow (clears the current project id so it saves
+  // as a fresh project rather than overwriting the open one).
+  async function importFile(file: File) {
+    setImportError(null);
+    try {
+      const text = await file.text();
+      const wf = deserializeWorkflow(JSON.parse(text));
+      loadWorkflow(wf);
+      setProjectId(null);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Could not read that file.");
+    }
+  }
 
   // Seed from query params: ?project=<id> (saved project), ?template=<id>
   // (dashboard) or ?prompt=... (landing).
@@ -200,12 +217,24 @@ export function EditorApp() {
         <Toolbar
           onRun={run}
           onExport={() => setShowExport(true)}
+          onImport={() => fileInputRef.current?.click()}
           onAI={() => setShowAI((v) => !v)}
           onVault={() => setShowVault(true)}
           onSchedule={() => setShowSchedule(true)}
           running={running}
           aiOpen={showAI}
           saveStatus={saveStatus}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void importFile(file);
+            e.target.value = ""; // allow re-importing the same file
+          }}
         />
         <div className="flex min-h-0 flex-1">
           <BlockPalette />
@@ -226,6 +255,15 @@ export function EditorApp() {
       <WalletVault open={showVault} onClose={() => setShowVault(false)} />
       <ScheduleDialog open={showSchedule} onClose={() => setShowSchedule(false)} />
       <Guide hidden={showAI} />
+
+      {importError && (
+        <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-[13px] text-red-600 shadow-lg">
+          Import failed: {importError}
+          <button onClick={() => setImportError(null)} className="ml-3 text-muted hover:text-ink">
+            Dismiss
+          </button>
+        </div>
+      )}
     </ReactFlowProvider>
   );
 }
