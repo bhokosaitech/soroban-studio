@@ -23,11 +23,22 @@ Key layers:
 - `lib/ai/` — DeepSeek client with a keyless heuristic fallback (`fallback.ts`).
 - `lib/codegen/` — JS (`@stellar/stellar-sdk`) + Soroban Rust generators.
 
-**Two processes:** the Next.js app (this folder) + the execution backend in `server/`
-(Express + Prisma + SQLite). The backend runs workflows for REAL on Stellar testnet
-(`server/src/engine/handlers.ts` = per-block real logic) and streams logs over SSE
-(`/api/runs/:id/stream`). It custodies testnet-only keypairs to sign. Confidential
-Transfer / contract deploy stay simulated (need a deployed contract) — keep that honest.
+**Two processes:** the Next.js app (this folder) + the execution backend, which lives
+in-process as route handlers under `app/api/` plus `lib/server/` (Prisma + SQLite). The
+backend runs workflows for REAL on Stellar (`lib/server/engine/handlers.ts` = per-block
+real logic) and streams logs over SSE (`/api/runs/:id/stream`). It executes against the
+workflow's `meta.network` (`testnet` **or** `mainnet`) — resolved per-run via
+`getServerNetwork` in `lib/server/stellar/network.ts`; nothing is read from `.env` for
+this. Friendbot auto-funding is testnet-only (no Friendbot on mainnet), so the Create
+Wallet "fund" field is disabled on mainnet.
+
+**Key custody:** the backend *generates* keypairs but persists **no private keys**. A
+wallet created mid-run is streamed to the client as a dedicated `wallet` SSE event (public
++ secret, never written to `runLog`); the browser shows it in the console and auto-saves it
+to the client vault. `Wallet.secret` is left empty in the DB. (Scheduled/headless runs also
+store no secret — a wallet they create is used within that run but not recoverable after.)
+Confidential Transfer / contract deploy stay simulated (need a deployed contract) — keep
+that honest.
 
 The editor has an onboarding tour: `components/editor/Guide.tsx` driven by `data-guide`
 attributes on target elements; the overlay is `pointer-events-none` so it never blocks

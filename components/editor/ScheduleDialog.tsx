@@ -92,14 +92,8 @@ export function ScheduleDialog({ open, onClose }: { open: boolean; onClose: () =
           )}
         </p>
 
-        <div className="flex gap-2">
-          <input
-            type="datetime-local"
-            value={when}
-            min={minWhen}
-            onChange={(e) => setWhen(e.target.value)}
-            className="flex-1 rounded-lg border border-border px-3 py-2 text-[14px] outline-none focus:border-accent focus:ring-4 focus:ring-accent-light"
-          />
+        <DateTimePicker value={when} onChange={setWhen} />
+        <div className="mt-3 flex justify-end">
           <button onClick={submit} className="btn-dark">
             Schedule
           </button>
@@ -140,12 +134,4 @@ function StatusBadge({ status }: { status: string }) {
   const color =
     status === "done" ? "text-green-600" : status === "failed" ? "text-red-600" : status === "canceled" ? "text-muted" : "text-accent";
   return <span className={color}>{status}</span>;
-}
-
-/** Current local time formatted for a `datetime-local` input (YYYY-MM-DDTHH:mm). */
-function nowLocalInput(): string {
-  const d = new Date();
-  d.setSeconds(0, 0);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
