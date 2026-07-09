@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -82,6 +82,7 @@ const NAV_LINKS: [string, string][] = [
 ];
 
 export default function LandingPage() {
+  const [playDemo, setPlayDemo] = useState(false);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -143,6 +144,79 @@ export default function LandingPage() {
             </p>
 
             <ArrowButton href="/editor" large>Launch Studio</ArrowButton>
+          </div>
+        </section>
+
+        {/* DEMO VIDEO SECTION */}
+        <section className="relative z-10 mx-auto max-w-4xl px-6 pb-20">
+          <div className="reveal overflow-hidden rounded-2xl border border-border bg-white p-2 shadow-[0_30px_70px_-30px_rgba(0,0,0,0.15)] transition-all duration-300 hover:shadow-[0_45px_100px_-50px_rgba(26,108,242,0.3)]">
+            {playDemo ? (
+              <div className="aspect-video w-full overflow-hidden rounded-xl bg-black">
+                <iframe
+                  src="https://www.youtube.com/embed/YTBFQ-v_unQ?autoplay=1"
+                  title="Soroban Studio Demo"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  className="h-full w-full border-0"
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setPlayDemo(true)}
+                className="group relative block aspect-video w-full overflow-hidden rounded-xl bg-off/50 text-left focus:outline-none"
+                style={{
+                  backgroundImage: "radial-gradient(#e4e2db 1px, transparent 1px)",
+                  backgroundSize: "20px 20px",
+                }}
+              >
+                {/* Simulated Editor Canvas as background */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-40 transition-opacity group-hover:opacity-50">
+                  {/* Floating blocks */}
+                  <div className="flex flex-col items-center gap-5">
+                    <div className="flex w-48 items-center gap-3 rounded-lg border border-border/80 bg-white px-3.5 py-3 shadow-sm">
+                      <span className="h-2 w-2 rounded-full bg-accent" />
+                      <div>
+                        <div className="text-[11px] font-medium text-ink">Create Wallet</div>
+                        <div className="text-[9px] text-muted">Friendbot funded</div>
+                      </div>
+                    </div>
+                    <div className="h-6 w-px border-l-2 border-dashed border-border" />
+                    <div className="flex w-48 items-center gap-3 rounded-lg border border-border/80 bg-white px-3.5 py-3 shadow-sm">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      <div>
+                        <div className="text-[11px] font-medium text-ink">Send Payment</div>
+                        <div className="text-[9px] text-muted">10 XLM</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dark blur overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-ink/30 via-ink/10 to-transparent" />
+                <div className="absolute inset-0 bg-ink/10 backdrop-blur-[2px] transition-all group-hover:bg-ink/20 group-hover:backdrop-blur-none" />
+
+                {/* Centered Play Button & Text */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+                  <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white text-ink shadow-lg transition-transform duration-300 group-hover:scale-110">
+                    {/* Pulsing ring */}
+                    <span className="absolute -inset-3 rounded-full border border-white/30 bg-white/5 opacity-0 group-hover:animate-ping group-hover:opacity-100" />
+                    
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="ml-1 h-7 w-7">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </div>
+                  
+                  <div className="text-center">
+                    <span className="rounded-full bg-ink px-3.5 py-1 text-[12px] font-medium text-white shadow-sm">
+                      Watch Demo
+                    </span>
+                    <p className="mt-2 text-[13px] font-medium text-ink/80">
+                      See Soroban Studio build a workflow in 2 minutes
+                    </p>
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
         </section>
 
