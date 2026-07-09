@@ -6,7 +6,8 @@ import type { RunLog } from "@/lib/soroban/sandbox";
  * same-origin Next.js route handlers (`/api/...`). Set NEXT_PUBLIC_API_URL only
  * to point the UI at a different host.
  */
-export const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+export const API_URL = "";
+const STREAM_API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 export class BackendUnavailableError extends Error {
   constructor() {
@@ -53,7 +54,7 @@ export async function runWorkflowLive(
   const runId = await createRun(workflow, secrets);
 
   return new Promise((resolve, reject) => {
-    const es = new EventSource(`${API_URL}/api/runs/${runId}/stream`);
+    const es = new EventSource(`${STREAM_API_URL}/api/runs/${runId}/stream`);
     let sawAnyEvent = false;
 
     es.addEventListener("log", (e) => {

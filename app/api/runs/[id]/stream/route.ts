@@ -97,6 +97,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "Access-Control-Allow-Origin": "*",
     },
   });
 }
