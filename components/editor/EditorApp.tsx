@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { useEditorStore } from "@/lib/store/editor";
 import { runSandbox, type RunLog } from "@/lib/soroban/sandbox";
-import { extractNodeSecrets, validateWorkflow } from "@/lib/workflow";
+import { emptyWorkflow, extractNodeSecrets, validateWorkflow } from "@/lib/workflow";
 import { getTemplate, templateToWorkflow } from "@/lib/templates";
-import { isBackendUnavailable, runWorkflowLive } from "@/lib/api";
+import { isBackendUnavailable, runWorkflowLive, fetchProject } from "@/lib/api";
 import { Toolbar } from "./Toolbar";
 import { BlockPalette } from "./BlockPalette";
 import { Canvas } from "./Canvas";
@@ -18,26 +18,50 @@ import { Guide } from "./Guide";
 import { WalletVault } from "./WalletVault";
 import { ScheduleDialog } from "./ScheduleDialog";
 import { useVaultStore } from "@/lib/vault/store";
+import { useAutoSave } from "./useAutoSave";
 
 export function EditorApp() {
   const toWorkflow = useEditorStore((s) => s.toWorkflow);
   const loadWorkflow = useEditorStore((s) => s.loadWorkflow);
+  const setProjectId = useEditorStore((s) => s.setProjectId);
   const [showAI, setShowAI] = useState(false);
   const [aiPrompt, setAiPrompt] = useState<string | undefined>();
+  const saveStatus = useAutoSave();
 
-  // Seed from query params: ?template=<id> (dashboard) or ?prompt=... (landing).
+  // Seed from query params: ?project=<id> (saved project), ?template=<id>
+  // (dashboard) or ?prompt=... (landing).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const id = params.get("template");
-    const template = id ? getTemplate(id) : undefined;
-    if (template) loadWorkflow(templateToWorkflow(template));
+
+    const projectId = params.get("project");
+    if (projectId) {
+      fetchProject(projectId)
+        .then((p) => {
+          loadWorkflow(p.workflow);
+          setProjectId(p.id);
+        })
+        .catch(() => {
+          /* project missing or not owned — start blank */
+        });
+    } else {
+      const id = params.get("template");
+      const template = id ? getTemplate(id) : undefined;
+      if (template) {
+        loadWorkflow(templateToWorkflow(template));
+      } else {
+        // Fresh editor: reset any state the module-level store held from a
+        // previously opened project so a new workflow starts clean.
+        loadWorkflow(emptyWorkflow());
+      }
+      setProjectId(null);
+    }
 
     const prompt = params.get("prompt");
     if (prompt) {
       setAiPrompt(prompt);
       setShowAI(true);
     }
-  }, [loadWorkflow]);
+  }, [loadWorkflow, setProjectId]);
 
   const [showExport, setShowExport] = useState(false);
   const [showVault, setShowVault] = useState(false);
@@ -129,10 +153,12 @@ export function EditorApp() {
         <Toolbar
           onRun={run}
           onExport={() => setShowExport(true)}
-          onAI={() => setShowAI(true)}
+          onAI={() => setShowAI((v) => !v)}
           onVault={() => setShowVault(true)}
           onSchedule={() => setShowSchedule(true)}
           running={running}
+          aiOpen={showAI}
+          saveStatus={saveStatus}
         />
         <div className="flex min-h-0 flex-1">
           <BlockPalette />
@@ -145,10 +171,10 @@ export function EditorApp() {
             )}
           </div>
           <Inspector />
+          <AIBuilder open={showAI} onClose={() => setShowAI(false)} initialPrompt={aiPrompt} />
         </div>
       </div>
 
-      <AIBuilder open={showAI} onClose={() => setShowAI(false)} initialPrompt={aiPrompt} />
       <ExportDialog open={showExport} onClose={() => setShowExport(false)} />
       <WalletVault open={showVault} onClose={() => setShowVault(false)} />
       <ScheduleDialog open={showSchedule} onClose={() => setShowSchedule(false)} />

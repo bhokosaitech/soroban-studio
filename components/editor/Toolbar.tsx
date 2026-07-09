@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, Download, KeyRound, Play, Sparkles, Trash } from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, CloudOff, Download, KeyRound, Loader2, Play, Sparkles, Trash } from "lucide-react";
 import { useEditorStore } from "@/lib/store/editor";
+import type { SaveStatus } from "./useAutoSave";
 
 export function Toolbar({
   onRun,
@@ -11,6 +12,8 @@ export function Toolbar({
   onVault,
   onSchedule,
   running,
+  aiOpen,
+  saveStatus,
 }: {
   onRun: () => void;
   onExport: () => void;
@@ -18,6 +21,8 @@ export function Toolbar({
   onVault: () => void;
   onSchedule: () => void;
   running: boolean;
+  aiOpen: boolean;
+  saveStatus: SaveStatus;
 }) {
   const { meta, setMeta, clear, nodes } = useEditorStore();
 
@@ -41,6 +46,7 @@ export function Toolbar({
         >
           {meta.network}
         </span>
+        <SaveIndicator status={saveStatus} />
       </div>
 
       <div className="flex items-center gap-2">
@@ -63,7 +69,12 @@ export function Toolbar({
         >
           <CalendarClock size={14} /> Schedule
         </button>
-        <button data-guide="ai" onClick={onAI} className="btn-ghost flex items-center gap-1.5">
+        <button
+          data-guide="ai"
+          onClick={onAI}
+          aria-pressed={aiOpen}
+          className={`btn-ghost flex items-center gap-1.5 ${aiOpen ? "bg-accent-light text-accent" : ""}`}
+        >
           <Sparkles size={14} className="text-accent" /> AI Builder
         </button>
         <button
@@ -84,5 +95,21 @@ export function Toolbar({
         </button>
       </div>
     </header>
+  );
+}
+
+/** Small ambient indicator reflecting the debounced auto-save state. */
+function SaveIndicator({ status }: { status: SaveStatus }) {
+  if (status === "idle") return null;
+  const map = {
+    saving: { icon: <Loader2 size={12} className="animate-spin" />, text: "Saving…", cls: "text-muted" },
+    saved: { icon: <Check size={12} />, text: "Saved", cls: "text-muted" },
+    error: { icon: <CloudOff size={12} />, text: "Save failed", cls: "text-red-600" },
+  } as const;
+  const s = map[status];
+  return (
+    <span className={`flex items-center gap-1 text-[11px] ${s.cls}`} title="Auto-save">
+      {s.icon} {s.text}
+    </span>
   );
 }

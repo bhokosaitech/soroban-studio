@@ -6,7 +6,7 @@ import { useEditorStore } from "@/lib/store/editor";
 import { generateJavaScript } from "@/lib/codegen/javascript";
 import { generateRust } from "@/lib/codegen/rust";
 import { extractNodeSecrets } from "@/lib/workflow";
-import { Backdrop } from "./AIBuilder";
+import { Backdrop } from "./Backdrop";
 
 type Tab = "javascript" | "rust" | "json";
 

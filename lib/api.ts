@@ -90,6 +90,42 @@ export function isBackendUnavailable(e: unknown): e is BackendUnavailableError {
   return e instanceof BackendUnavailableError;
 }
 
+export interface SavedProject {
+  id: string;
+  name: string;
+  description?: string | null;
+  network: string;
+  updatedAt: string;
+  workflow: Workflow;
+}
+
+/**
+ * Persist a workflow. Pass `id` to update an existing project, omit it to create
+ * one. Returns the saved project (with its id) so the caller can keep updating it.
+ */
+export async function saveProject(workflow: Workflow, id?: string | null): Promise<SavedProject> {
+  const res = await fetch(`${API_URL}/api/projects`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workflow, id: id ?? undefined }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? "Could not save project.");
+  }
+  return res.json();
+}
+
+/** Fetch one of the user's saved projects by id. */
+export async function fetchProject(id: string): Promise<SavedProject> {
+  const res = await fetch(`${API_URL}/api/projects/${id}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? "Could not load project.");
+  }
+  return res.json();
+}
+
 /** Create + fund a testnet wallet whose secret is returned (not stored server-side). */
 export async function createEphemeralWallet(): Promise<{
   publicKey: string;

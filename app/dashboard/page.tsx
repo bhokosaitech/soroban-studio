@@ -1,22 +1,33 @@
 import Link from "next/link";
-import { ArrowRight, Plus, Sparkles } from "lucide-react";
+import { ArrowRight, Clock, Plus, Sparkles } from "lucide-react";
 import { Logo } from "@/components/site/Logo";
+import { LogoutButton } from "@/components/site/LogoutButton";
 import { TEMPLATES } from "@/lib/templates";
 import { requireUser } from "@/lib/server/auth";
+import { prisma } from "@/lib/server/db";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  await requireUser("/dashboard");
+  const user = await requireUser("/dashboard");
+  const projects = await prisma.project.findMany({
+    where: { ownerId: user.id },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, name: true, description: true, network: true, updatedAt: true },
+  });
+
   return (
     <div className="min-h-screen bg-off">
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-border bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <Logo />
-          <Link href="/editor" className="btn-dark flex items-center gap-1.5">
-            <Plus size={15} /> New workflow
-          </Link>
+          <div className="flex items-center gap-2">
+            <LogoutButton />
+            <Link href="/editor" className="btn-dark flex items-center gap-1.5">
+              <Plus size={15} /> New workflow
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -86,17 +97,48 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {/* Recent projects — empty state (persistence lands next) */}
+        {/* Recent projects */}
         <div className="mt-12">
           <h2 className="mb-4 text-[13px] font-semibold uppercase tracking-wide text-muted">
             Recent projects
           </h2>
-          <div className="rounded-xl border border-dashed border-border bg-white p-10 text-center">
-            <p className="text-[14px] text-muted">
-              No saved projects yet. Your workflows will appear here once project persistence is
-              enabled.
-            </p>
-          </div>
+          {projects.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border bg-white p-10 text-center">
+              <p className="text-[14px] text-muted">
+                No saved projects yet. Anything you build in the editor is saved here
+                automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {projects.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/editor?project=${p.id}`}
+                  className="group flex flex-col justify-between rounded-xl border border-border bg-white p-5 transition-shadow hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,0.35)]"
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-[15px] font-semibold text-ink">{p.name}</h3>
+                      <ArrowRight
+                        size={16}
+                        className="text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink"
+                      />
+                    </div>
+                    {p.description && (
+                      <p className="mt-1.5 text-[13px] leading-snug text-muted">{p.description}</p>
+                    )}
+                  </div>
+                  <div className="mt-4 flex items-center gap-2 text-[11px] text-muted">
+                    <span className="rounded-full bg-off px-2 py-0.5 font-medium">{p.network}</span>
+                    <span className="flex items-center gap-1">
+                      <Clock size={12} /> {p.updatedAt.toLocaleDateString()}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </main>
     </div>

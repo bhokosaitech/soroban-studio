@@ -11,7 +11,7 @@ import {
   scheduleWorkflow,
   type Schedule,
 } from "@/lib/api";
-import { Backdrop } from "./AIBuilder";
+import { Backdrop } from "./Backdrop";
 
 export function ScheduleDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toWorkflow = useEditorStore((s) => s.toWorkflow);

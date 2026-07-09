@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, Copy, KeyRound, Loader2, Lock, Plus, Trash2, X } from "lucide-react";
 import { useVaultStore } from "@/lib/vault/store";
 import { createEphemeralWallet } from "@/lib/api";
-import { Backdrop } from "./AIBuilder";
+import { Backdrop } from "./Backdrop";
 
 export function WalletVault({ open, onClose }: { open: boolean; onClose: () => void }) {
   const vault = useVaultStore();

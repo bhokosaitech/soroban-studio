@@ -26,6 +26,7 @@ interface EditorState {
   edges: Edge[];
   meta: WorkflowMeta;
   selectedId: string | null;
+  projectId: string | null;
 
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
@@ -36,6 +37,7 @@ interface EditorState {
   removeNode: (nodeId: string) => void;
   select: (nodeId: string | null) => void;
   setMeta: (patch: Partial<WorkflowMeta>) => void;
+  setProjectId: (id: string | null) => void;
 
   loadWorkflow: (wf: Workflow) => void;
   toWorkflow: () => Workflow;
@@ -47,6 +49,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   edges: [],
   meta: emptyWorkflow().meta,
   selectedId: null,
+  projectId: null,
 
   onNodesChange: (changes) =>
     set({ nodes: applyNodeChanges(changes, get().nodes) as FlowNode[] }),
@@ -83,6 +86,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   select: (nodeId) => set({ selectedId: nodeId }),
   setMeta: (patch) => set({ meta: { ...get().meta, ...patch } }),
+  setProjectId: (id) => set({ projectId: id }),
 
   loadWorkflow: (wf) => {
     const { nodes, edges } = toFlow(wf);

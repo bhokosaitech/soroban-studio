@@ -72,3 +72,20 @@ export async function requireUser(nextPath: string): Promise<SessionUser> {
   return user;
 }
 
+/** True when the user's email is in the ADMIN_EMAILS allowlist. */
+export function isAdmin(user: Pick<SessionUser, "email"> | null | undefined): boolean {
+  if (!user?.email) return false;
+  return env.adminEmails.includes(user.email.toLowerCase());
+}
+
+/**
+ * Admin-page guard. Redirects to /login when signed out, or to the home page
+ * when signed in without admin rights (so non-admins can't probe /admin).
+ */
+export async function requireAdmin(nextPath = "/admin"): Promise<SessionUser> {
+  const user = await requireUser(nextPath);
+  if (!isAdmin(user)) redirect("/");
+  return user;
+}
+
+
