@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { prisma } from "./db";
@@ -54,3 +55,20 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     return null;
   }
 }
+
+/**
+ * Server-component guard: return the signed-in user, or redirect to /login
+ * (preserving where the user was headed). A DB/verify failure is treated as
+ * unauthenticated rather than a crash. Call from protected pages.
+ */
+export async function requireUser(nextPath: string): Promise<SessionUser> {
+  let user: SessionUser | null = null;
+  try {
+    user = await getSessionUser();
+  } catch {
+    user = null;
+  }
+  if (!user) redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+  return user;
+}
+

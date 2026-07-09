@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
-import { DM_Serif_Display, DM_Mono, Instrument_Sans } from "next/font/google";
+import { Bricolage_Grotesque, DM_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
-const instrument = Instrument_Sans({
-  variable: "--font-instrument",
+// Body / UI — highly legible modern grotesque.
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const dmSerif = DM_Serif_Display({
-  variable: "--font-dm-serif",
+// Display — expressive contemporary grotesque for headlines.
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
   subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
+// Code / labels.
 const dmMono = DM_Mono({
   variable: "--font-dm-mono",
   subsets: ["latin"],
@@ -35,7 +37,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${instrument.variable} ${dmSerif.variable} ${dmMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${bricolage.variable} ${dmMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">{children}</body>
     </html>

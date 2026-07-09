@@ -2,8 +2,12 @@ import Link from "next/link";
 import { ArrowRight, Plus, Sparkles } from "lucide-react";
 import { Logo } from "@/components/site/Logo";
 import { TEMPLATES } from "@/lib/templates";
+import { requireUser } from "@/lib/server/auth";
 
-export default function DashboardPage() {
+export const dynamic = "force-dynamic";
+
+export default async function DashboardPage() {
+  await requireUser("/dashboard");
   return (
     <div className="min-h-screen bg-off">
       {/* Header */}

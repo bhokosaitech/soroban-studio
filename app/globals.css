@@ -36,8 +36,9 @@
   --color-accent: var(--accent);
   --color-accent-light: var(--accent-light);
 
-  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--font-dm-serif), ui-serif, Georgia, serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-dm-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
@@ -61,12 +62,15 @@ body {
 /* Scroll-reveal helper (used by landing sections) */
 .reveal {
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  transform: translateY(24px);
+  filter: blur(6px);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.8s cubic-bezier(0.16, 1, 0.3, 1), filter 0.8s ease;
 }
 .reveal.visible {
   opacity: 1;
   transform: translateY(0);
+  filter: blur(0);
 }
 
 @keyframes fadeUp {
@@ -80,6 +84,93 @@ body {
 }
 .pulse {
   animation: pulse 1.8s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------ *
+ * Cinematic landing effects — light but dramatic.
+ * Soft Stellar-blue aurora, film grain, floating depth, and an
+ * animated gradient wash for the display headline.
+ * ------------------------------------------------------------------ */
+
+/* Display headline: tuned tracking + optical sizing for Bricolage. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  font-optical-sizing: auto;
+}
+
+/* Aurora: slow-drifting radial washes behind the hero. */
+.aurora {
+  position: absolute;
+  inset: -20% -10% auto -10%;
+  height: 130%;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(60px);
+  opacity: 0.9;
+  background:
+    radial-gradient(38% 44% at 22% 30%, rgba(26, 108, 242, 0.28), transparent 70%),
+    radial-gradient(32% 40% at 78% 22%, rgba(124, 58, 237, 0.18), transparent 70%),
+    radial-gradient(40% 46% at 60% 78%, rgba(217, 119, 6, 0.14), transparent 72%);
+  animation: auroraDrift 18s ease-in-out infinite alternate;
+}
+@keyframes auroraDrift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(2%, -2%, 0) scale(1.08); }
+  100% { transform: translate3d(-2%, 1%, 0) scale(1.04); }
+}
+
+/* Film grain overlay — very subtle, sits above washes, below content. */
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Animated gradient fill for the headline accent word. */
+.text-gradient {
+  background: linear-gradient(
+    100deg,
+    var(--ink) 0%,
+    var(--ink) 30%,
+    var(--accent) 52%,
+    #7c3aed 68%,
+    var(--ink) 92%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: sheen 8s ease-in-out infinite;
+}
+@keyframes sheen {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* Gentle float for the hero graphic. */
+.float {
+  animation: float 7s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+/* Soft glowing ring used on CTA / cards. */
+.glow {
+  box-shadow: 0 30px 80px -40px rgba(26, 108, 242, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora, .text-gradient, .float, .pulse { animation: none; }
+  .reveal { transition: none; filter: none; transform: none; opacity: 1; }
 }
 
 /* ------------------------------------------------------------------ *
