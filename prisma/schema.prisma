@@ -2,10 +2,8 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// SQLite by default — zero infrastructure, no Docker, tiny footprint.
-// To use Postgres instead: set provider = "postgresql" and point DATABASE_URL
-// at your instance (workflow/status columns are stored as strings, so no other
-// changes are needed).
+// PostgreSQL — point DATABASE_URL at your instance. Workflow/status columns are
+// stored as plain strings, so swapping providers needs no other schema changes.
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

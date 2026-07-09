@@ -1,5 +1,5 @@
 import type { Keypair } from "@stellar/stellar-sdk";
-import type { WorkflowNode } from "../workflow.js";
+import type { WorkflowNode } from "../workflow-schema";
 
 export type LogLevel = "info" | "success" | "error" | "network" | "warn";
 

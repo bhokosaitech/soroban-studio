@@ -6,7 +6,7 @@ import { useEditorStore } from "@/lib/store/editor";
 import { runSandbox, type RunLog } from "@/lib/soroban/sandbox";
 import { extractNodeSecrets, validateWorkflow } from "@/lib/workflow";
 import { getTemplate, templateToWorkflow } from "@/lib/templates";
-import { API_URL, isBackendUnavailable, runWorkflowLive } from "@/lib/api";
+import { isBackendUnavailable, runWorkflowLive } from "@/lib/api";
 import { Toolbar } from "./Toolbar";
 import { BlockPalette } from "./BlockPalette";
 import { Canvas } from "./Canvas";
@@ -104,7 +104,8 @@ export function EditorApp() {
           nodeId: "runtime",
           blockType: "runtime",
           level: "warn",
-          message: `Execution backend not reachable at ${API_URL}. Start it with "npm run dev" in /server for real testnet runs — showing a local simulation instead.`,
+          message:
+            "Execution API not reachable — the database or Stellar network may be down. Showing a local simulation instead.",
           at: Date.now(),
         });
         await runSandbox(wf, append);

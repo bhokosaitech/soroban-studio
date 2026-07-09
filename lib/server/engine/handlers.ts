@@ -1,5 +1,5 @@
 import { Keypair } from "@stellar/stellar-sdk";
-import { NETWORK, sorobanRpc } from "../stellar/network.js";
+import { NETWORK, sorobanRpc } from "../stellar/network";
 import {
   addTrustline,
   buildInvoiceUri,
@@ -10,9 +10,9 @@ import {
   sendPayment,
   verifyTransaction,
   waitForPayment,
-} from "../stellar/operations.js";
-import type { BlockHandler, RunContext } from "./types.js";
-import type { WorkflowNode } from "../workflow.js";
+} from "../stellar/operations";
+import type { BlockHandler, RunContext } from "./types";
+import type { WorkflowNode } from "../workflow-schema";
 
 const str = (v: unknown): string | undefined =>
   v === undefined || v === null || v === "" ? undefined : String(v);

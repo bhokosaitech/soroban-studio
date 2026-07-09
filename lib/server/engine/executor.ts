@@ -1,7 +1,7 @@
 import type { Keypair } from "@stellar/stellar-sdk";
-import { executionOrder, type Workflow } from "../workflow.js";
-import { getHandler } from "./handlers.js";
-import type { RunContext, RunLogEvent } from "./types.js";
+import { executionOrder, type Workflow } from "../workflow-schema";
+import { getHandler } from "./handlers";
+import type { RunContext, RunLogEvent } from "./types";
 
 export interface ExecuteCallbacks {
   emit: (event: RunLogEvent) => void;

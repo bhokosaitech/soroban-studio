@@ -1,7 +1,7 @@
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
-import { prisma } from "../db.js";
-import { runScheduleNow } from "./runner.js";
+import { prisma } from "../db";
+import { runScheduleNow } from "./runner";
 
 /**
  * Workflow scheduler.
@@ -90,9 +90,14 @@ function startPoller() {
 
 /** Find and run every schedule whose time has passed. */
 async function fireDueNow() {
-  const due = await prisma.schedule.findMany({
-    where: { status: "scheduled", runAt: { lte: new Date() } },
-    select: { id: true },
-  });
-  for (const s of due) await runScheduleNow(s.id).catch((e) => console.error(e));
+  try {
+    const due = await prisma.schedule.findMany({
+      where: { status: "scheduled", runAt: { lte: new Date() } },
+      select: { id: true },
+    });
+    for (const s of due) await runScheduleNow(s.id).catch((e) => console.error(e));
+  } catch (e) {
+    // DB unreachable — skip this tick rather than crash the poller/boot.
+    console.error("Scheduler sweep failed:", (e as Error).message);
+  }
 }

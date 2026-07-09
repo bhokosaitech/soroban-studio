@@ -1,4 +1,5 @@
 import {
+  Account,
   BASE_FEE,
   Keypair,
   Memo,
@@ -6,8 +7,8 @@ import {
   Operation,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { NETWORK, horizon } from "./network.js";
-import { isNative, resolveAsset } from "./assets.js";
+import { NETWORK, horizon } from "./network";
+import { isNative, resolveAsset } from "./assets";
 
 /** Fund an account with test XLM via Friendbot. Idempotent-ish on testnet. */
 export async function fundWithFriendbot(publicKey: string): Promise<void> {
@@ -98,11 +99,8 @@ export async function verifyTransaction(hash: string): Promise<{
 
 /** Derive a muxed (M...) address for a base account + id. */
 export function muxedAddress(basePublicKey: string, id: string | number): string {
-  const muxed = new MuxedAccount(
-    // MuxedAccount needs an Account-like; use a lightweight shim.
-    { accountId: () => basePublicKey, sequenceNumber: () => "0", incrementSequenceNumber: () => {} },
-    String(id)
-  );
+  // MuxedAccount wraps a base Account; the sequence is irrelevant for address derivation.
+  const muxed = new MuxedAccount(new Account(basePublicKey, "0"), String(id));
   return muxed.accountId();
 }
 
@@ -118,7 +116,7 @@ export function buildInvoiceUri(params: {
   if (params.amount) q.set("amount", String(params.amount));
   if (params.assetCode && !isNative(params.assetCode)) {
     q.set("asset_code", params.assetCode);
-    q.set("asset_issuer", resolveAsset(params.assetCode).getIssuer());
+    q.set("asset_issuer", resolveAsset(params.assetCode).getIssuer() ?? "");
   }
   if (params.memo) q.set("memo", params.memo);
   return `web+stellar:pay?${q.toString()}`;

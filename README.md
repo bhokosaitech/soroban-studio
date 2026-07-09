@@ -17,32 +17,40 @@ JavaScript (`@stellar/stellar-sdk`) and a Soroban Rust contract skeleton.
 
 ## Getting started
 
-This is a two-part app: the **web app** (this folder) and the **execution backend**
-(`server/`). The editor works on its own; the backend is what makes **Run** submit
-real transactions to Stellar testnet.
+Soroban Studio is a **single Next.js app** — the visual editor and the execution
+backend (route handlers + workflow engine + scheduler) run in one process. The editor
+works on its own; the API routes are what make **Run** submit real transactions to
+Stellar testnet.
 
-### 1. Web app
+You need a **PostgreSQL** database (set `DATABASE_URL`). Redis is optional — the
+scheduler falls back to a DB poller without it.
 
 ```bash
 npm install
-cp .env.example .env.local   # optional: DEEPSEEK_API_KEY, NEXT_PUBLIC_API_URL
+cp .env.example .env.local   # DATABASE_URL (required), plus optional keys below
+npm run prisma:migrate       # create the schema in your Postgres database
 npm run dev                  # http://localhost:3000
 ```
 
-### 2. Execution backend (real testnet runs)
+Environment variables (single `.env.local`):
 
-```bash
-cd server
-npm install
-cp .env.example .env         # SQLite by default — no database server needed
-npm run setup                # prisma migrate: creates the local SQLite db
-npm run dev                  # http://localhost:4000
-```
+| Var | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `REDIS_URL` | — | BullMQ scheduler; omit to use the DB poller |
+| `GOOGLE_CLIENT_ID` | — | Google sign-in (project persistence) |
+| `JWT_SECRET` | — | Signs the session cookie |
+| `DEEPSEEK_API_KEY` | — | AI Builder; omit to use the heuristic fallback |
+| `STELLAR_NETWORK` | — | Defaults to `testnet` |
 
-With both running, the editor's **Run** button executes your workflow on real
-Stellar **testnet** and streams live logs (funded wallets, real tx hashes,
-explorer links) into the console. If the backend is down, Run falls back to a
-local simulation and tells you.
+The editor's **Run** button executes your workflow on real Stellar **testnet** and
+streams live logs (funded wallets, real tx hashes, explorer links) into the console
+over Server-Sent Events. If the API can't be reached (e.g. the database is down), Run
+falls back to a local simulation and tells you.
+
+> **Deployment:** this is a long-running Node server (`npm run build && npm run start`),
+> not Vercel serverless — the run stream (SSE), the in-memory per-run signer bridge, and
+> the boot-time scheduler all need a single always-on process.
 
 Routes:
 
@@ -60,7 +68,15 @@ app/
   page.tsx              Landing page
   dashboard/page.tsx    Templates + workspace
   editor/page.tsx       Visual editor (renders <EditorApp/>)
-  api/generate/route.ts AI Builder endpoint (prompt -> workflow JSON)
+  api/
+    generate/route.ts   AI Builder endpoint (prompt -> workflow JSON)
+    runs/               create run + SSE execution stream + history
+    schedules/          create / list / cancel scheduled runs
+    wallets/            custodied + ephemeral testnet wallets
+    projects/           saved projects (Google-auth gated)
+    auth/google/        Google sign-in -> session cookie
+
+instrumentation.ts      Starts the workflow scheduler once at server boot
 
 components/
   site/                 Landing/nav/waitlist components
@@ -77,6 +93,13 @@ lib/
   ai/                   DeepSeek client + heuristic fallback + system prompt
   codegen/              JavaScript + Rust (Soroban) generators
   templates.ts          Starter templates
+  api.ts                Browser client for the API routes (same-origin)
+  server/               Server-only backend logic (never client-bundled):
+                        db (Prisma), env, auth, workflow-schema (zod),
+                        engine (executor + handlers), scheduler, stellar ops
+
+prisma/                 schema.prisma + migrations (Project, Wallet, Run,
+                        RunLog, Schedule, User) — PostgreSQL
 ```
 
 ### The block catalog is the source of truth
@@ -91,26 +114,27 @@ The editor graph serializes to a stable, tool-agnostic `Workflow` (`lib/workflow
 This is what gets saved, produced by the AI Builder, validated before a run, and fed to
 the code generators.
 
-## The backend (`server/`)
+## The execution backend (`lib/server/` + `app/api/`)
 
-Node + TypeScript + Express + Prisma. Executes workflows for real against Stellar
-testnet and streams logs over SSE.
+The workflow engine runs in-process via Next.js Route Handlers. It executes workflows
+for real against Stellar testnet and streams logs over SSE.
 
 ```
-server/
-  prisma/schema.prisma   Project, Wallet, Run, RunLog (SQLite by default)
-  src/
-    stellar/             network config, asset resolver, real operations
-    engine/              executor (topological run) + per-block handlers
-    routes/              runs (+SSE stream), projects, wallets
-    index.ts             Express app
+lib/server/
+  db.ts                Prisma client (singleton)
+  env.ts  auth.ts      env access + Google/JWT session helpers
+  workflow-schema.ts   zod validation + topological order
+  stellar/             network config, asset resolver, real operations
+  engine/              executor (topological run) + per-block handlers
+  scheduler/           BullMQ (Redis) or DB-poller, + headless runner
+prisma/schema.prisma   Project, Wallet, Run, RunLog, Schedule, User (PostgreSQL)
 ```
 
-- **Custodial testnet keys:** to run a whole workflow automatically, the backend
+- **Custodial testnet keys:** to run a whole workflow automatically, the API
   generates and stores testnet keypairs so it can sign. **Testnet only** — never
   point `STELLAR_NETWORK` at mainnet with custodied keys.
-- **SQLite by default** (a local file) so there's no database server to run.
-  Switch to Postgres by changing the provider in `prisma/schema.prisma`.
+- **PostgreSQL** via `DATABASE_URL`. Run `npm run prisma:migrate` (dev) or
+  `npm run prisma:deploy` (prod) to apply the schema.
 
 ### What's real vs. simulated
 

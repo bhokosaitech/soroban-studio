@@ -1,8 +1,8 @@
 import { Keypair } from "@stellar/stellar-sdk";
-import { prisma } from "../db.js";
-import { WorkflowSchema } from "../workflow.js";
-import { executeWorkflow } from "../engine/executor.js";
-import type { RunLogEvent } from "../engine/types.js";
+import { prisma } from "../db";
+import { WorkflowSchema } from "../workflow-schema";
+import { executeWorkflow } from "../engine/executor";
+import type { RunLogEvent } from "../engine/types";
 
 /**
  * Execute a due schedule headlessly (no SSE client). Loads the schedule's

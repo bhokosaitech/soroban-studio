@@ -1,9 +1,12 @@
 import type { Workflow } from "@/lib/workflow";
 import type { RunLog } from "@/lib/soroban/sandbox";
 
-/** Base URL of the execution backend (server/). */
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:4000";
+/**
+ * Base URL of the execution API. Empty by default so all calls hit the
+ * same-origin Next.js route handlers (`/api/...`). Set NEXT_PUBLIC_API_URL only
+ * to point the UI at a different host.
+ */
+export const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 export class BackendUnavailableError extends Error {
   constructor() {
