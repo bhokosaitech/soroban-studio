@@ -378,6 +378,15 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
     handles: { target: true, source: true },
     fields: [{ key: "seconds", label: "Seconds", type: "number", default: 5 }],
   },
+  {
+    type: "csv-import",
+    label: "CSV Import",
+    category: "automation",
+    description: "Upload a CSV file, map columns to fields, and execute downstream steps for each row.",
+    icon: "FileSpreadsheet",
+    handles: { target: true, source: true },
+    fields: [],
+  },
 
   // ------------------------------------------------------------------ output
   {

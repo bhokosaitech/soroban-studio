@@ -37,6 +37,8 @@ export interface RunContext {
   /** Persist a newly created custodial wallet (testnet). */
   saveWallet: (kp: Keypair, label: string) => Promise<void>;
   emit: (event: Omit<RunLogEvent, "at">) => void;
+  /** Currently executing CSV row values (mapped to workflow inputs). */
+  currentRow?: Record<string, any>;
 }
 
 export type BlockHandler = (
