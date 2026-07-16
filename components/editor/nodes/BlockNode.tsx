@@ -86,6 +86,8 @@ function summarize(type: string, f: Record<string, unknown>): string {
       return f.amount ? `${f.amount} ${f.asset ?? ""}` : "";
     case "condition":
       return conditionSummary(f);
+    case "csv-import":
+      return f.csvName ? `${String(f.csvName)} (${(f.rows as any[])?.length ?? 0} rows)` : "No CSV uploaded";
     default:
       return "";
   }
