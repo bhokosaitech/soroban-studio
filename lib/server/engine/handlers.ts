@@ -19,6 +19,13 @@ const num = (v: unknown): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
+const getVal = (node: WorkflowNode, key: string, ctx: RunContext): any => {
+  if (ctx.currentRow && ctx.currentRow[key] !== undefined) {
+    return ctx.currentRow[key];
+  }
+  return node.data[key];
+};
+
 /** Require an active signer, with a helpful error if the graph is missing one. */
 function requireAccount(ctx: RunContext): Keypair {
   if (!ctx.currentAccount) {
@@ -38,7 +45,7 @@ const HANDLERS: Record<string, BlockHandler> = {
     // Friendbot exists on testnet only — on mainnet the account is created
     // unfunded and the user must fund it themselves.
     const canFund = !!ctx.net.friendbotUrl;
-    const fund = canFund && node.data.fund !== false;
+    const fund = canFund && getVal(node, "fund", ctx) !== false;
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "network", message: "Generating keypair…" });
     const kp = fund ? await createFundedKeypair(ctx.net) : Keypair.random();
     ctx.currentAccount = kp;
@@ -61,7 +68,7 @@ const HANDLERS: Record<string, BlockHandler> = {
   },
 
   "use-wallet": async (node, ctx) => {
-    const pk = str(node.data.publicKey);
+    const pk = str(getVal(node, "publicKey", ctx));
     if (!pk) throw new Error("Use Saved Wallet: choose a wallet from your vault.");
     const secret = ctx.signers?.[pk];
     if (!secret) {
@@ -90,7 +97,7 @@ const HANDLERS: Record<string, BlockHandler> = {
       return;
     }
     // 2. An unlocked vault wallet selected on this block.
-    const pk = str(node.data.publicKey);
+    const pk = str(getVal(node, "publicKey", ctx));
     if (pk && ctx.signers?.[pk]) {
       ctx.currentAccount = Keypair.fromSecret(ctx.signers[pk]);
       ctx.emit({ nodeId: node.id, blockType: node.type, level: "success", message: `Connected saved wallet ${pk}` });
@@ -121,9 +128,9 @@ const HANDLERS: Record<string, BlockHandler> = {
 
   "generate-address": async (node, ctx) => {
     const account = requireAccount(ctx);
-    const muxed = node.data.muxed === true;
+    const muxed = getVal(node, "muxed", ctx) === true;
     if (muxed) {
-      const id = str(node.data.memoId) ?? "1";
+      const id = str(getVal(node, "memoId", ctx)) ?? "1";
       const address = muxedAddress(account.publicKey(), id);
       ctx.outputs[node.id] = { address };
       ctx.emit({ nodeId: node.id, blockType: node.type, level: "success", message: `Muxed address: ${address}` });
@@ -135,7 +142,7 @@ const HANDLERS: Record<string, BlockHandler> = {
 
   "establish-trustline": async (node, ctx) => {
     const account = requireAccount(ctx);
-    const code = str(node.data.assetCode) ?? "USDC";
+    const code = str(getVal(node, "assetCode", ctx)) ?? "USDC";
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "network", message: `Adding ${code} trustline…` });
     const hash = await addTrustline(ctx.net, account, code);
     ctx.outputs[node.id] = { txHash: hash };
@@ -145,9 +152,9 @@ const HANDLERS: Record<string, BlockHandler> = {
 
   "send-payment": async (node, ctx) => {
     const source = requireAccount(ctx);
-    const destination = str(node.data.destination);
-    const amount = str(node.data.amount);
-    const asset = str(node.data.asset) ?? "XLM";
+    const destination = str(getVal(node, "destination", ctx));
+    const amount = str(getVal(node, "amount", ctx));
+    const asset = str(getVal(node, "asset", ctx)) ?? "XLM";
     if (!destination) throw new Error("Send Payment: destination is required.");
     if (!amount) throw new Error("Send Payment: amount is required.");
     ctx.emit({
@@ -162,7 +169,7 @@ const HANDLERS: Record<string, BlockHandler> = {
         destination,
         assetCode: asset,
         amount,
-        memo: str(node.data.memo),
+        memo: str(getVal(node, "memo", ctx)),
       });
       ctx.outputs[node.id] = { txHash: hash, amount };
       ctx.outputs._last = { txHash: hash, amount, status: "succeeded" };
@@ -190,22 +197,22 @@ const HANDLERS: Record<string, BlockHandler> = {
   },
 
   "create-invoice": async (node, ctx) => {
-    const dest = ctx.currentAccount?.publicKey() ?? str(node.data.destination);
+    const dest = ctx.currentAccount?.publicKey() ?? str(getVal(node, "destination", ctx));
     if (!dest) throw new Error("Create Invoice needs a wallet or destination.");
     const uri = buildInvoiceUri({
       destination: dest,
-      amount: str(node.data.amount),
-      assetCode: str(node.data.asset),
-      memo: str(node.data.reference),
+      amount: str(getVal(node, "amount", ctx)),
+      assetCode: str(getVal(node, "asset", ctx)),
+      memo: str(getVal(node, "reference", ctx)),
     });
     ctx.outputs[node.id] = { invoiceUri: uri };
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "success", message: `Invoice (SEP-7): ${uri}` });
   },
 
   "wait-for-payment": async (node, ctx) => {
-    const address = str(node.data.address) ?? ctx.currentAccount?.publicKey();
+    const address = str(getVal(node, "address", ctx)) ?? ctx.currentAccount?.publicKey();
     if (!address) throw new Error("Wait for Payment needs a watch address.");
-    const timeout = num(node.data.timeout) ?? 120;
+    const timeout = num(getVal(node, "timeout", ctx)) ?? 120;
     ctx.emit({
       nodeId: node.id,
       blockType: node.type,
@@ -215,8 +222,8 @@ const HANDLERS: Record<string, BlockHandler> = {
     const result = await waitForPayment({
       net: ctx.net,
       address,
-      assetCode: str(node.data.asset),
-      minAmount: num(node.data.amount),
+      assetCode: str(getVal(node, "asset", ctx)),
+      minAmount: num(getVal(node, "amount", ctx)),
       timeoutSec: timeout,
       onPoll: (a) => {
         if (a % 4 === 0)
@@ -236,7 +243,7 @@ const HANDLERS: Record<string, BlockHandler> = {
   },
 
   "verify-transaction": async (node, ctx) => {
-    const hash = str(node.data.hash) ?? (ctx.outputs._last?.txHash as string | undefined);
+    const hash = str(getVal(node, "hash", ctx)) ?? (ctx.outputs._last?.txHash as string | undefined);
     if (!hash) throw new Error("Verify Transaction needs a tx hash (or a prior tx to verify).");
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "network", message: `Verifying ${hash}…` });
     const res = await verifyTransaction(ctx.net, hash);
@@ -250,9 +257,9 @@ const HANDLERS: Record<string, BlockHandler> = {
   },
 
   "trigger-webhook": async (node, ctx) => {
-    const url = str(node.data.url);
+    const url = str(getVal(node, "url", ctx));
     if (!url) throw new Error("Trigger Webhook needs a URL.");
-    const method = str(node.data.method) ?? "POST";
+    const method = str(getVal(node, "method", ctx)) ?? "POST";
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "network", message: `${method} ${url}` });
     const res = await fetch(url, {
       method,
@@ -269,11 +276,11 @@ const HANDLERS: Record<string, BlockHandler> = {
   },
 
   condition: async (node, ctx) => {
-    const subject = str(node.data.subject) ?? "custom";
+    const subject = str(getVal(node, "subject", ctx)) ?? "custom";
 
     // "Last transaction status" — a simple succeeded/failed check.
     if (subject === "lastStatus") {
-      const want = str(node.data.status) ?? "succeeded";
+      const want = str(getVal(node, "status", ctx)) ?? "succeeded";
       const actual = str(ctx.outputs._last?.status) ?? "unknown";
       const result = actual === want;
       ctx.outputs[node.id] = { result };
@@ -297,13 +304,13 @@ const HANDLERS: Record<string, BlockHandler> = {
       left = Number(ctx.outputs._last?.amount ?? NaN);
       label = "last payment amount";
     } else {
-      const custom = str(node.data.customLeft) ?? "";
+      const custom = str(getVal(node, "customLeft", ctx)) ?? "";
       left = asNumberOrString(custom);
       label = "value";
     }
 
-    const right = asNumberOrString(str(node.data.value) ?? "");
-    const op = str(node.data.op) ?? "gte";
+    const right = asNumberOrString(str(getVal(node, "value", ctx)) ?? "");
+    const op = str(getVal(node, "op", ctx)) ?? "gte";
     const result = compareValues(left, right, op);
 
     ctx.outputs[node.id] = { result, left };
@@ -316,9 +323,19 @@ const HANDLERS: Record<string, BlockHandler> = {
   },
 
   delay: async (node, ctx) => {
-    const seconds = Math.min(num(node.data.seconds) ?? 3, 30);
+    const seconds = Math.min(num(getVal(node, "seconds", ctx)) ?? 3, 30);
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "info", message: `Waiting ${seconds}s…` });
     await new Promise((r) => setTimeout(r, seconds * 1000));
+  },
+
+  "csv-import": async (node, ctx) => {
+    const rows = (node.data.rows as any[]) || [];
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "success",
+      message: `CSV Import: Loaded CSV file containing ${rows.length} rows.`,
+    });
   },
 
   "confidential-transfer": async (node, ctx) => {
@@ -353,7 +370,7 @@ const HANDLERS: Record<string, BlockHandler> = {
       nodeId: node.id,
       blockType: node.type,
       level: "success",
-      message: str(node.data.message) ?? "Workflow completed successfully.",
+      message: str(getVal(node, "message", ctx)) ?? "Workflow completed successfully.",
     });
   },
 
@@ -362,14 +379,14 @@ const HANDLERS: Record<string, BlockHandler> = {
       nodeId: node.id,
       blockType: node.type,
       level: "info",
-      message: str(node.data.message) ?? "Error handler ready.",
+      message: str(getVal(node, "message", ctx)) ?? "Error handler ready.",
     });
   },
 };
 
 /** Prove real Soroban RPC connectivity; full invoke needs args + signing. */
 async function contractPing(node: WorkflowNode, ctx: RunContext, label: string) {
-  const contractId = str(node.data.contractId);
+  const contractId = str(getVal(node, "contractId", ctx));
   try {
     const latest = await ctx.net.sorobanRpc.getLatestLedger();
     ctx.emit({
