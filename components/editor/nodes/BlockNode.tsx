@@ -95,10 +95,7 @@ function summarize(type: string, f: Record<string, unknown>): string {
 
 function loopSummary(f: Record<string, unknown>): string {
   if (f.mode === "list") {
-    const n = String(f.items ?? "")
-      .split(/[,\n]/)
-      .map((s) => s.trim())
-      .filter(Boolean).length;
+    const n = Array.isArray(f.items) ? f.items.filter((v) => String(v).trim()).length : 0;
     return `${n} item${n === 1 ? "" : "s"}`;
   }
   return `× ${f.count ?? 0}`;

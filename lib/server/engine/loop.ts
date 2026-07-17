@@ -24,7 +24,17 @@ export function parseLoopItems(raw: string): string[] {
 }
 
 export function resolveLoopItems(data: Record<string, unknown>): string[] {
-  if (data.mode === "list") return parseLoopItems(String(data.items ?? ""));
+  if (data.mode === "list") {
+    // The inspector stores `items` as a string[] (one per row); older/imported
+    // workflows may still carry a comma/newline-separated string.
+    if (Array.isArray(data.items)) {
+      return data.items
+        .map((v) => String(v).trim())
+        .filter(Boolean)
+        .slice(0, MAX_ITERATIONS);
+    }
+    return parseLoopItems(String(data.items ?? ""));
+  }
   const count = Math.max(0, Math.min(Math.trunc(Number(data.count) || 0), MAX_ITERATIONS));
   return Array.from({ length: count }, (_, i) => String(i + 1));
 }

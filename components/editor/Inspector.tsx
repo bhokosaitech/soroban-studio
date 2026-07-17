@@ -5,7 +5,7 @@ import type { BlockField } from "@/lib/blocks/types";
 import { ASSET_OPTIONS } from "@/lib/blocks/assets";
 import { useEditorStore } from "@/lib/store/editor";
 import { useVaultStore } from "@/lib/vault/store";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 
 /**
  * Right-hand inspector — edits the selected node's fields (from the catalog)
@@ -113,6 +113,10 @@ function Field({
     return <WalletField field={field} value={value} onChange={onChange} />;
   }
 
+  if (field.type === "list") {
+    return <ListField field={field} value={value} onChange={onChange} />;
+  }
+
   if (field.type === "boolean") {
     const disabled = Boolean(field.disabledOnMainnet && network === "mainnet");
     const checked = disabled ? false : Boolean(value);
@@ -172,6 +176,68 @@ function Field({
         }
         className="input"
       />
+    </Labeled>
+  );
+}
+
+/** Dynamic add/remove rows for `list`-type fields (one input per item). */
+function ListField({
+  field,
+  value,
+  onChange,
+}: {
+  field: BlockField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const items = Array.isArray(value) ? (value as string[]) : [];
+
+  const label = (
+    <span>
+      {field.label}
+      {field.required && <span className="text-accent"> *</span>}
+    </span>
+  );
+
+  function setItem(i: number, v: string) {
+    const next = [...items];
+    next[i] = v;
+    onChange(next);
+  }
+
+  function removeItem(i: number) {
+    onChange(items.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <Labeled label={label} help={field.help}>
+      <div className="space-y-1.5">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <input
+              value={item}
+              placeholder={field.placeholder}
+              onChange={(e) => setItem(i, e.target.value)}
+              className="input"
+            />
+            <button
+              type="button"
+              onClick={() => removeItem(i)}
+              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-off hover:text-ink"
+              title="Remove"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChange([...items, ""])}
+          className="flex items-center gap-1 text-[12px] font-medium text-accent hover:underline"
+        >
+          <Plus size={13} /> Add value
+        </button>
+      </div>
     </Labeled>
   );
 }

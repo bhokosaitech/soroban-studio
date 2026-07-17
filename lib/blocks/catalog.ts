@@ -407,9 +407,10 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
       {
         key: "items",
         label: "Input list",
-        type: "text",
-        placeholder: "GABC…, GDEF…, GHIJ…",
-        help: "Comma or newline separated (or a JSON array). Available in the next block as {{item}}.",
+        type: "list",
+        default: [],
+        placeholder: "GABC…",
+        help: "One value per row. Available in the next block as {{item}}.",
         showIf: { field: "mode", in: ["list"] },
       },
       {

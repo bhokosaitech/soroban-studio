@@ -24,7 +24,8 @@ export type FieldType =
   | "address"
   | "asset"
   | "wallet"
-  | "secret";
+  | "secret"
+  | "list";
 
 /** A configurable parameter shown in the node inspector. */
 export interface BlockField {
@@ -34,7 +35,7 @@ export interface BlockField {
   placeholder?: string;
   help?: string;
   required?: boolean;
-  default?: string | number | boolean;
+  default?: string | number | boolean | string[];
   /** Options for `select` fields. */
   options?: { label: string; value: string }[];
   /**

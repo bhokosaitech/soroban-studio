@@ -1,5 +1,5 @@
 import { getBlock } from "@/lib/blocks/catalog";
-import { executionOrder, type Workflow } from "@/lib/workflow";
+import { executionOrder, resolveLoopItems, type Workflow } from "@/lib/workflow";
 import { getNetwork, type NetworkConfig } from "@/lib/soroban/config";
 
 /**
@@ -86,10 +86,7 @@ function snippet(type: string, data: Record<string, unknown>, net: NetworkConfig
   console.log("invoke ${data.method ?? "method"} on", ${js(data.contractId)});`;
     case "loop-batch": {
       if (data.mode === "list") {
-        const items = String(data.items ?? "")
-          .split(/[,\n]/)
-          .map((s) => s.trim())
-          .filter(Boolean);
+        const items = resolveLoopItems(data);
         return `  // Loop / Batch — repeat the next step for each item
   const items = ${js(items)};
   for (const [index, item] of items.entries()) {
