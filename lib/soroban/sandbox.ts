@@ -107,6 +107,10 @@ function describeStep(type: string, data: Record<string, unknown>, net: NetworkC
       return `${short(data.contractId)}.${data.method ?? "?"}()`;
     case "wait-for-payment":
       return `watching ${short(data.address)} for ${data.amount ?? "any"} ${data.asset ?? "XLM"}`;
+    case "create-invoice":
+      return `generating ${data.amount ?? "?"} ${data.asset ?? ""} invoice`;
+    case "swap-asset":
+      return `analyzing ${data.amount ?? "?"} ${String(data.sendAsset ?? "XLM")} → ${String(data.destAsset ?? "USDC")}`;
     case "trigger-webhook":
       return `${data.method ?? "POST"} ${data.url ?? "?"}`;
     default:

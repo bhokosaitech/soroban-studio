@@ -228,14 +228,44 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
     type: "swap-asset",
     label: "Swap Asset",
     category: "asset",
-    description: "Path-payment swap between two assets on the Stellar DEX.",
+    description:
+      "Swap one Stellar asset for another via the DEX/AMM (path payment).",
     icon: "ArrowLeftRight",
     network: true,
     handles: { target: true, source: true },
     fields: [
       { key: "sendAsset", label: "From asset", type: "asset", default: "XLM" },
       { key: "destAsset", label: "To asset", type: "asset", default: "USDC" },
-      { key: "amount", label: "Amount", type: "number", required: true },
+      {
+        key: "mode",
+        label: "Swap mode",
+        type: "select",
+        default: "exact-in",
+        options: [
+          { label: "Send exact amount", value: "exact-in" },
+          { label: "Receive exact amount", value: "exact-out" },
+        ],
+        help: "exact-in: spend exactly this much. exact-out: receive exactly this much.",
+      },
+      { key: "amount", label: "Amount", type: "number", required: true, placeholder: "10" },
+      {
+        key: "slippageBps",
+        label: "Slippage (basis points)",
+        type: "number",
+        default: 100,
+        help: "100 = 1%, 500 = 5%. Higher accepts more price movement.",
+      },
+      {
+        key: "sharpness",
+        label: "Quote sharpness",
+        type: "select",
+        default: "fast",
+        help: "Trade-off between speed and best execution rate.",
+        options: [
+          { label: "Fast (best effort)", value: "fast" },
+          { label: "Standard (small wait)", value: "standard" },
+        ],
+      },
     ],
   },
 
@@ -379,7 +409,7 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
     fields: [{ key: "seconds", label: "Seconds", type: "number", default: 5 }],
   },
 
-  // ------------------------------------------------------------------ output
+  // ---------------------------------------------------------------- output
   {
     type: "on-success",
     label: "On Success",

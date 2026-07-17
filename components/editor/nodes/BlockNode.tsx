@@ -84,6 +84,8 @@ function summarize(type: string, f: Record<string, unknown>): string {
       return typeof f.url === "string" ? f.url.replace(/^https?:\/\//, "") : "";
     case "create-invoice":
       return f.amount ? `${f.amount} ${f.asset ?? ""}` : "";
+    case "swap-asset":
+      return f.amount ? `${f.amount} ${String(f.sendAsset ?? "XLM")} → ${String(f.destAsset ?? "USDC")}` : "";
     case "condition":
       return conditionSummary(f);
     default:

@@ -49,43 +49,59 @@ main().catch((err) => {
 function snippet(type: string, data: Record<string, unknown>, net: NetworkConfig): string {
   switch (type) {
     case "create-wallet":
-      return `  const account = Keypair.random();
+      return `const account = Keypair.random();
   console.log("Public key:", account.publicKey());${
     data.fund && net.friendbotUrl
       ? `\n  await fetch(\`${net.friendbotUrl}?addr=\${account.publicKey()}\`);`
       : net.friendbotUrl
         ? ""
-        : `\n  // Fund this account manually on ${net.label} — no Friendbot available.`
+        : "\n  // Fund this account manually on ${net.label} — no Friendbot available."
   }`;
     case "send-payment":
-      return `  // send ${data.amount ?? "?"} ${data.asset ?? "XLM"} to ${data.destination ?? "<dest>"}
-  const src = await horizon.loadAccount(account.publicKey());
-  const paymentTx = new TransactionBuilder(src, {
-    fee: "100",
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(Operation.payment({
-      destination: ${js(data.destination)},
-      asset: ${data.asset && data.asset !== "XLM" ? `new Asset(${js(data.asset)}, ISSUER)` : "Asset.native()"},
-      amount: ${js(String(data.amount ?? "0"))},
-    }))
-    .setTimeout(30)
-    .build();
-  paymentTx.sign(account);
-  const res = await horizon.submitTransaction(paymentTx);
-  console.log("Payment tx:", res.hash);`;
+      return ` // send ${data.amount ?? "?"} ${data.asset ?? "XLM"} to ${data.destination ?? "<dest>"}
+const src = await horizon.loadAccount(account.publicKey());
+const paymentTx = new TransactionBuilder(src, {
+  fee: "100",
+  networkPassphrase: NETWORK_PASSPHRASE,
+})
+  .addOperation(Operation.payment({
+    destination: ${js(data.destination)},
+    asset: ${data.asset && data.asset !== "XLM" ? `new Asset(${js(data.asset)}, ISSUER)` : "Asset.native()"},
+    amount: ${js(String(data.amount ?? "0"))},
+  }))
+  .setTimeout(30)
+  .build();
+paymentTx.sign(account);
+const res = await horizon.submitTransaction(paymentTx);
+console.log("Payment tx:", res.hash);`;
     case "trigger-webhook":
-      return `  await fetch(${js(data.url)}, {
-    method: ${js(data.method ?? "POST")},
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ workflow: ${js(type)} }),
-  });`;
+      return `await fetch(${js(data.url)}, {
+  method: ${js(data.method ?? "POST")},
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ workflow: ${js(type)} }),
+});`;
     case "invoke-contract":
-      return `  // Invoke Soroban contract ${data.contractId ?? "<contract>"}
-  // Use rpc.Server + contract.call("${data.method ?? "method"}", ...args)
-  console.log("invoke ${data.method ?? "method"} on", ${js(data.contractId)});`;
+      return ` // Invoke Soroban contract ${data.contractId ?? "<contract>"}
+ // Use rpc.Server + contract.call("${data.method ?? "method"}", ...args)
+console.log("invoke ${data.method ?? "method"} on", ${js(data.contractId)});`;
+    case "swap-asset": {
+      const mode = typeof data.mode === "string" && data.mode === "exact-out" ? "exact out" : "exact in";
+      const sendAsset = typeof data.sendAsset === "string" ? data.sendAsset : "XLM";
+      const destAsset = typeof data.destAsset === "string" ? data.destAsset : "USDC";
+      const amount = typeof data.amount === "string" || typeof data.amount === "number" ? String(data.amount).trim() || "0" : "0";
+      const slippageBps = typeof data.slippageBps === "string" || typeof data.slippageBps === "number" ? Number(data.slippageBps) : 100;
+      const slippagePct = Number.isFinite(slippageBps) ? slippageBps / 100 : 1;
+      return ` // Analyze ${sendAsset} -> ${destAsset} swap
+ const expectedReceive = ${js(amount)} * 0.95;
+console.log(
+  "${mode} swap:",
+  ${js(amount)},
+  "${sendAsset} -> ${destAsset}",
+  "slippage", ${slippagePct} + "%"
+);`;
+    }
     default:
-      return `  // TODO: implement ${type}`;
+      return ` // TODO: implement ${type}`;
   }
 }
 

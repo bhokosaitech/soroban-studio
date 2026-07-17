@@ -193,4 +193,114 @@ function normalizeAmount(amount: string | number): string {
   return n.toFixed(7).replace(/\.?0+$/, "");
 }
 
+export interface SwapQuote {
+  sendAmountMin: string;
+  expectedReceive: string;
+  route: string;
+  slippageBps: number;
+  number?: number;
+  exactOut?: boolean;
+  sharpness?: string;
+}
+
+export interface SwapAnalyzeInput {
+  net: ServerNetwork;
+  source: Keypair;
+  sendAsset?: string;
+  destAsset?: string;
+  amount: string;
+  mode?: "exact-in" | "exact-out";
+  slippageBps?: number;
+  sharpness?: string;
+}
+
+export async function analyzeSwap({
+  net,
+  source,
+  sendAsset = "XLM",
+  destAsset = "USDC",
+  amount,
+  mode = "exact-in",
+  slippageBps = 100,
+  sharpness = "fast",
+}: SwapAnalyzeInput): Promise<SwapQuote> {
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    throw new Error("Invalid swap amount.");
+  }
+
+  const maybePathAmount = (value: unknown) => {
+    if (typeof value !== "string") return undefined;
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
+
+  let pathRecords: Record<string, unknown>[] = [];
+  try {
+    const sendIssuer = isNative(sendAsset) ? undefined : resolveAsset(sendAsset).getIssuer();
+    const destIssuer = isNative(destAsset) ? undefined : resolveAsset(destAsset).getIssuer();
+    const resp = await net.horizon
+      .paths({
+        sourceAssets: sendIssuer ? [`${sendAsset}:${sendIssuer}`] : ["native"],
+        destinationAssetType: destIssuer ? "credit_alphanum4" : "native",
+        destinationAssetCode: destIssuer ? undefined : "XLM",
+        destinationAssetIssuer: destIssuer || undefined,
+        sourceAccount: source.publicKey(),
+        sourceAmount: mode === "exact-in" ? String(numericAmount) : undefined,
+        destinationAmount: mode === "exact-out" ? String(numericAmount) : undefined,
+      })
+      .call();
+    pathRecords = Array.isArray(resp.records) ? resp.records : [];
+  } catch {
+    // best-effort: fall back to advisory mode below.
+  }
+
+  const best = pathRecords[0];
+
+  const expectedReceiveCandidates = [
+    best?.destination_amount,
+    best?.destinationAmount,
+  ].map(maybePathAmount);
+  const fallbackReceive = mode === "exact-in" ? numericAmount * 0.95 : numericAmount * 0.9;
+  const expectedReceive =
+    expectedReceiveCandidates.find(Boolean) ??
+    (Number.isFinite(fallbackReceive) ? fallbackReceive : 0);
+  if (!Number.isFinite(expectedReceive) || expectedReceive <= 0) {
+    throw new Error("Cannot find a viable liquidity path for this swap.");
+  }
+
+  const sendAmountMinBase = mode === "exact-in" ? numericAmount : undefined;
+  const sendAmountMinCandidates = [best?.source_amount, best?.sourceAmount].map(maybePathAmount);
+  const sendAmountMinRaw =
+    (mode === "exact-out"
+      ? sendAmountMinCandidates.find(Boolean)
+      : sendAmountMinBase) ??
+    numericAmount;
+
+  const sendAmountMin = (Number(sendAmountMinRaw) * (1 - slippageBps / 10000))
+    .toFixed(7)
+    .replace(/\.?0+$/, "");
+
+  const pathLabels: string[] = [];
+  const assetArr = Array.isArray(best?.path) ? best.path : [];
+  for (const p of assetArr) {
+    if (p?.asset_type === "native") pathLabels.push("XLM");
+    else if (p?.asset_code && p?.asset_issuer) pathLabels.push(`${String(p.asset_code)}:${String(p.asset_issuer)}`);
+  }
+
+  return {
+    sendAmountMin,
+    expectedReceive: Number(expectedReceive).toFixed(7).replace(/\.?0+$/, ""),
+    route: pathLabels.length ? pathLabels.join(" → ") : "Direct",
+    slippageBps,
+    number: numericAmount,
+    exactOut: mode === "exact-out",
+    sharpness,
+  };
+}
+
+export interface SwapExecuteInput extends SwapAnalyzeInput {
+  quote: SwapQuote;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

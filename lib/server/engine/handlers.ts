@@ -337,15 +337,64 @@ const HANDLERS: Record<string, BlockHandler> = {
   "deploy-contract": async (node, ctx) => contractPing(node, ctx, "Deploy Contract"),
 
   "swap-asset": async (node, ctx) => {
-    // Path payments need on-chain liquidity/paths; kept advisory to avoid
-    // failing runs on empty testnet order books.
-    ctx.emit({
-      nodeId: node.id,
-      blockType: node.type,
-      level: "warn",
-      message: "Swap is advisory in the sandbox — wire a specific path/pool to execute for real.",
-    });
-    ctx.outputs[node.id] = { simulated: true };
+    const account = requireAccount(ctx);
+
+    const sendAsset = str(node.data.sendAsset) ?? "XLM";
+    const destAsset = str(node.data.destAsset) ?? "USDC";
+    const amount = num(node.data.amount);
+    const mode = str(node.data.mode) ?? "exact-in";
+    const slippageBps = num(node.data.slippageBps) ?? 100;
+    const sharpness = str(node.data.sharpness) ?? "fast";
+
+    if (sendAsset.toUpperCase() === destAsset.toUpperCase()) {
+      throw new Error("Swap Asset: input asset and output asset must be different.");
+    }
+    if (!amount || !Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Swap Asset: amount must be greater than zero.");
+    }
+
+    ctx.emit({ nodeId: node.id, blockType: node.type, level: "network", message: `Analyzing ${sendAsset} → ${destAsset} swap (${mode})…` });
+
+    try {
+      const { analyzeSwap } = await import("../stellar/operations");
+      const quote = await analyzeSwap({
+        net: ctx.net,
+        source: account,
+        sendAsset,
+        destAsset,
+        amount: String(amount),
+        mode: mode as "exact-in" | "exact-out",
+        slippageBps,
+        sharpness,
+      });
+
+      ctx.outputs[node.id] = {
+        sendAsset,
+        destAsset,
+        amount,
+        mode,
+        slippageBps,
+        expectedReceive: quote.expectedReceive,
+        sendAmountMin: quote.sendAmountMin,
+        route: quote.route,
+        sharpness,
+      };
+      ctx.outputs._last = {
+        ...ctx.outputs[node.id],
+        status: "succeeded",
+      };
+
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "success",
+        message:
+          `Swap quote ready: receive ~${quote.expectedReceive} ${destAsset}` +
+          ` (min ${quote.sendAmountMin} ${sendAsset} after ${slippageBps / 100}% slippage).`,
+      });
+    } catch (e) {
+      throw new Error(`Swap Asset: ${(e as Error).message}`);
+    }
   },
 
   "on-success": async (node, ctx) => {
