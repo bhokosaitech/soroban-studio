@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, Check, CloudOff, Download, KeyRound, Loader2, Play, Sparkles, Trash, Upload } from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, CloudOff, Download, Globe, KeyRound, Loader2, Play, Sparkles, Trash, Upload } from "lucide-react";
 import { useEditorStore } from "@/lib/store/editor";
 import type { SaveStatus } from "./useAutoSave";
 
@@ -12,6 +12,7 @@ export function Toolbar({
   onAI,
   onVault,
   onSchedule,
+  onShare,
   running,
   aiOpen,
   saveStatus,
@@ -22,6 +23,7 @@ export function Toolbar({
   onAI: () => void;
   onVault: () => void;
   onSchedule: () => void;
+  onShare: () => void;
   running: boolean;
   aiOpen: boolean;
   saveStatus: SaveStatus;
@@ -73,6 +75,14 @@ export function Toolbar({
           className="btn-ghost flex items-center gap-1.5 disabled:opacity-40"
         >
           <CalendarClock size={14} /> Schedule
+        </button>
+        <button
+          data-guide="share"
+          onClick={onShare}
+          disabled={nodes.length === 0}
+          className="btn-ghost flex items-center gap-1.5 disabled:opacity-40"
+        >
+          <Globe size={14} /> Share
         </button>
         <button
           data-guide="ai"
