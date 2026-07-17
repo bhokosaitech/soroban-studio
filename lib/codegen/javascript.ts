@@ -84,6 +84,31 @@ function snippet(type: string, data: Record<string, unknown>, net: NetworkConfig
       return `  // Invoke Soroban contract ${data.contractId ?? "<contract>"}
   // Use rpc.Server + contract.call("${data.method ?? "method"}", ...args)
   console.log("invoke ${data.method ?? "method"} on", ${js(data.contractId)});`;
+    case "multisig-wallet":
+      const signers = data.signers as Array<{ publicKey: string; weight: number }> || [];
+      const signerOps = signers.map(s => `    .addOperation(Operation.setOptions({
+      signer: {
+        ed25519PublicKey: ${js(s.publicKey)},
+        weight: ${s.weight},
+      },
+    }))`).join('\n');
+      return `  // Configure multisig with ${signers.length} signer(s)
+  const src = await horizon.loadAccount(account.publicKey());
+  const multisigTx = new TransactionBuilder(src, {
+    fee: "100",
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+${signerOps || '    .addOperation(Operation.setOptions({}))'}
+    .addOperation(Operation.setOptions({
+      lowThreshold: ${data.lowThreshold ?? 1},
+      mediumThreshold: ${data.mediumThreshold ?? 2},
+      highThreshold: ${data.highThreshold ?? 3},
+    }))
+    .setTimeout(30)
+    .build();
+  multisigTx.sign(account);
+  const res = await horizon.submitTransaction(multisigTx);
+  console.log("Multisig config tx:", res.hash);`;
     default:
       return `  // TODO: implement ${type}`;
   }

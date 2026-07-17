@@ -5,7 +5,8 @@ import type { BlockField } from "@/lib/blocks/types";
 import { ASSET_OPTIONS } from "@/lib/blocks/assets";
 import { useEditorStore } from "@/lib/store/editor";
 import { useVaultStore } from "@/lib/vault/store";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus, X } from "lucide-react";
+import { useState } from "react";
 
 /**
  * Right-hand inspector — edits the selected node's fields (from the catalog)
@@ -111,6 +112,10 @@ function Field({
 
   if (field.type === "wallet") {
     return <WalletField field={field} value={value} onChange={onChange} />;
+  }
+
+  if (field.type === "signers") {
+    return <SignersField field={field} value={value} onChange={onChange} />;
   }
 
   if (field.type === "boolean") {
@@ -226,6 +231,108 @@ function WalletField({
           </option>
         ))}
       </select>
+      <style jsx>{inputStyle}</style>
+    </Labeled>
+  );
+}
+
+/** Signers configuration for multisig wallets. */
+interface Signer {
+  publicKey: string;
+  weight: number;
+}
+
+function SignersField({
+  field,
+  value,
+  onChange,
+}: {
+  field: BlockField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const signers = (value as Signer[]) || [];
+  const [newPublicKey, setNewPublicKey] = useState("");
+  const [newWeight, setNewWeight] = useState(1);
+
+  const label = (
+    <span>
+      {field.label}
+      {field.required && <span className="text-accent"> *</span>}
+    </span>
+  );
+
+  const addSigner = () => {
+    if (!newPublicKey.trim()) return;
+    const updated = [...signers, { publicKey: newPublicKey.trim(), weight: newWeight }];
+    onChange(updated);
+    setNewPublicKey("");
+    setNewWeight(1);
+  };
+
+  const removeSigner = (index: number) => {
+    const updated = signers.filter((_, i) => i !== index);
+    onChange(updated);
+  };
+
+  const updateSigner = (index: number, key: keyof Signer, val: string | number) => {
+    const updated = [...signers];
+    updated[index] = { ...updated[index], [key]: val };
+    onChange(updated);
+  };
+
+  return (
+    <Labeled label={label} help={field.help}>
+      <div className="space-y-2">
+        {signers.map((signer, index) => (
+          <div key={index} className="flex items-center gap-2 rounded-lg border border-border bg-off p-2">
+            <input
+              type="text"
+              value={signer.publicKey}
+              onChange={(e) => updateSigner(index, "publicKey", e.target.value)}
+              placeholder="G..."
+              className="input flex-1 text-[12px]"
+            />
+            <input
+              type="number"
+              value={signer.weight}
+              onChange={(e) => updateSigner(index, "weight", parseInt(e.target.value) || 0)}
+              min="1"
+              max="255"
+              className="input w-16 text-[12px]"
+            />
+            <button
+              onClick={() => removeSigner(index)}
+              className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-white hover:text-ink"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+        <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-off p-2">
+          <input
+            type="text"
+            value={newPublicKey}
+            onChange={(e) => setNewPublicKey(e.target.value)}
+            placeholder="Add signer public key..."
+            className="input flex-1 text-[12px]"
+          />
+          <input
+            type="number"
+            value={newWeight}
+            onChange={(e) => setNewWeight(parseInt(e.target.value) || 1)}
+            min="1"
+            max="255"
+            className="input w-16 text-[12px]"
+          />
+          <button
+            onClick={addSigner}
+            className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-white hover:text-ink"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+      </div>
       <style jsx>{inputStyle}</style>
     </Labeled>
   );
