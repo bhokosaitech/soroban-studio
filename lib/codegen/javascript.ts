@@ -84,6 +84,24 @@ function snippet(type: string, data: Record<string, unknown>, net: NetworkConfig
       return `  // Invoke Soroban contract ${data.contractId ?? "<contract>"}
   // Use rpc.Server + contract.call("${data.method ?? "method"}", ...args)
   console.log("invoke ${data.method ?? "method"} on", ${js(data.contractId)});`;
+    case "loop-batch": {
+      if (data.mode === "list") {
+        const items = String(data.items ?? "")
+          .split(/[,\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        return `  // Loop / Batch — repeat the next step for each item
+  const items = ${js(items)};
+  for (const [index, item] of items.entries()) {
+    // TODO: run the next block here, using \`item\` / \`index\`
+  }`;
+      }
+      return `  // Loop / Batch — repeat the next step
+  const count = ${js(Number(data.count) || 0)};
+  for (let index = 0; index < count; index++) {
+    // TODO: run the next block here, using \`index\`
+  }`;
+    }
     default:
       return `  // TODO: implement ${type}`;
   }

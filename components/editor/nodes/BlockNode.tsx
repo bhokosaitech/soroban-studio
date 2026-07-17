@@ -86,9 +86,22 @@ function summarize(type: string, f: Record<string, unknown>): string {
       return f.amount ? `${f.amount} ${f.asset ?? ""}` : "";
     case "condition":
       return conditionSummary(f);
+    case "loop-batch":
+      return loopSummary(f);
     default:
       return "";
   }
+}
+
+function loopSummary(f: Record<string, unknown>): string {
+  if (f.mode === "list") {
+    const n = String(f.items ?? "")
+      .split(/[,\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean).length;
+    return `${n} item${n === 1 ? "" : "s"}`;
+  }
+  return `× ${f.count ?? 0}`;
 }
 
 const OP_SHORT: Record<string, string> = { gt: ">", gte: "≥", lt: "<", lte: "≤", eq: "=", neq: "≠" };

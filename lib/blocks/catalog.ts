@@ -378,6 +378,49 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
     handles: { target: true, source: true },
     fields: [{ key: "seconds", label: "Seconds", type: "number", default: 5 }],
   },
+  {
+    type: "loop-batch",
+    label: "Loop / Batch",
+    category: "automation",
+    description:
+      "Repeat the very next connected block multiple times — by a fixed count or once per item in a list. Use {{item}} / {{index}} in that block's fields to reference the current iteration. Loops can't be nested.",
+    icon: "Repeat",
+    handles: { target: true, source: true },
+    fields: [
+      {
+        key: "mode",
+        label: "Repeat by",
+        type: "select",
+        default: "count",
+        options: [
+          { label: "Fixed count", value: "count" },
+          { label: "List of inputs", value: "list" },
+        ],
+      },
+      {
+        key: "count",
+        label: "Repeat count",
+        type: "number",
+        default: 3,
+        showIf: { field: "mode", in: ["count"] },
+      },
+      {
+        key: "items",
+        label: "Input list",
+        type: "text",
+        placeholder: "GABC…, GDEF…, GHIJ…",
+        help: "Comma or newline separated (or a JSON array). Available in the next block as {{item}}.",
+        showIf: { field: "mode", in: ["list"] },
+      },
+      {
+        key: "continueOnError",
+        label: "Continue on failed iteration",
+        type: "boolean",
+        default: true,
+        help: "Keep looping if one iteration fails instead of stopping the whole workflow.",
+      },
+    ],
+  },
 
   // ------------------------------------------------------------------ output
   {
