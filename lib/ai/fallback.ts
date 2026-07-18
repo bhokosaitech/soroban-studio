@@ -16,7 +16,9 @@ export function heuristicWorkflow(prompt: string): Workflow {
   // Trigger
   chain.push(p.includes("when paid") || p.includes("receive") ? "wait-for-payment" : "trigger-manual");
 
-  if (p.includes("wallet") || p.includes("account") || p.includes("sign up"))
+  if (p.includes("multisig") || p.includes("multi-sig") || p.includes("multi signature"))
+    chain.push("multisig-wallet");
+  else if (p.includes("wallet") || p.includes("account") || p.includes("sign up"))
     chain.push("create-wallet");
   if (p.includes("connect")) chain.push("connect-wallet");
   if (p.includes("invoice") || p.includes("bill")) chain.push("create-invoice");

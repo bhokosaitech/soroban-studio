@@ -21,6 +21,7 @@ model Project {
   runs        Run[]
   owner      User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   ownerId    String?
+  shares      Share[]
 }
 
 /// A sandbox-custodied testnet keypair. Secrets are TESTNET ONLY.
@@ -80,5 +81,29 @@ model User {
   name      String?
   googleId  String?   @unique
   projects  Project[]
+  shares    Share[]
   createdAt DateTime  @default(now())
+}
+
+/// A published snapshot of a workflow, shareable via a stable link.
+/// `mode`: readonly | fork. The workflow is copied at share time, so later
+/// edits to the source project don't change what's already been shared.
+model Share {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  network     String   @default("testnet")
+  workflow    String
+  mode        String   @default("readonly")
+  authorName  String?
+  revoked     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  owner       User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId     String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId   String?
+
+  @@index([projectId])
 }

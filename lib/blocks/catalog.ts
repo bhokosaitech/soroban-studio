@@ -138,6 +138,45 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
       { key: "memoId", label: "Muxed id", type: "number", placeholder: "1001" },
     ],
   },
+  {
+    type: "multisig-wallet",
+    label: "Multisig Wallet",
+    category: "wallet",
+    description: "Configure multi-signature authorization for a Stellar account with custom signers, weights, and thresholds.",
+    icon: "Users",
+    network: true,
+    handles: { target: true, source: true },
+    fields: [
+      {
+        key: "signers",
+        label: "Signers",
+        type: "signers",
+        required: true,
+        help: "Add signers with their public keys and weights. Total signer weight must meet thresholds.",
+      },
+      {
+        key: "lowThreshold",
+        label: "Low threshold",
+        type: "number",
+        default: 1,
+        help: "Minimum weight for low-value operations (e.g., payment < 10 XLM).",
+      },
+      {
+        key: "mediumThreshold",
+        label: "Medium threshold",
+        type: "number",
+        default: 2,
+        help: "Minimum weight for medium-value operations (e.g., payment >= 10 XLM).",
+      },
+      {
+        key: "highThreshold",
+        label: "High threshold",
+        type: "number",
+        default: 3,
+        help: "Minimum weight for sensitive operations (e.g., account options, trustlines).",
+      },
+    ],
+  },
 
   // ----------------------------------------------------------------- payment
   {

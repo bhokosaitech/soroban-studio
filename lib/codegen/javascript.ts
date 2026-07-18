@@ -99,6 +99,35 @@ function snippet(type: string, data: Record<string, unknown>, net: NetworkConfig
     // TODO: run the next block here, using \`index\`
   }`;
     }
+    case "multisig-wallet": {
+      const signers = (data.signers as Array<{ publicKey: string; weight: number }>) || [];
+      const validSigners = signers.filter((s) => s.publicKey && s.publicKey.trim().length > 0);
+      const signerOps = validSigners
+        .map(
+          (s) => `    .addOperation(Operation.setOptions({
+      signer: {
+        ed25519PublicKey: ${js(s.publicKey)},
+        weight: ${s.weight ?? 1},
+      },
+    }))`
+        )
+        .join("\n");
+      return `  // Configure multisig with ${validSigners.length} signer(s) and thresholds
+  const src = await horizon.loadAccount(account.publicKey());
+  const multisigBuilder = new TransactionBuilder(src, {
+    fee: "100",
+    networkPassphrase: NETWORK_PASSPHRASE,
+  });
+${signerOps ? signerOps + "\n" : ""}  multisigBuilder.addOperation(Operation.setOptions({
+    lowThreshold: ${data.lowThreshold ?? 1},
+    medThreshold: ${data.mediumThreshold ?? 2},
+    highThreshold: ${data.highThreshold ?? 3},
+  }));
+  const multisigTx = multisigBuilder.setTimeout(30).build();
+  multisigTx.sign(account);
+  const res = await horizon.submitTransaction(multisigTx);
+  console.log("Multisig configured, tx:", res.hash);`;
+    }
     default:
       return `  // TODO: implement ${type}`;
   }

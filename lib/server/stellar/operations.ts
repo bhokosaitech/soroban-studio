@@ -194,3 +194,64 @@ function normalizeAmount(amount: string | number): string {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export interface MultisigInput {
+  signers?: Array<{ publicKey: string; weight: number }>;
+  lowThreshold?: number;
+  mediumThreshold?: number;
+  highThreshold?: number;
+}
+
+/** Configure signers and operational thresholds for a Stellar account. */
+export async function configureMultisigAccount(
+  net: ServerNetwork,
+  source: Keypair,
+  input: MultisigInput
+): Promise<{
+  hash: string;
+  signers: Array<{ key: string; weight: number }>;
+  thresholds: { low: number; med: number; high: number };
+}> {
+  const account = await net.horizon.loadAccount(source.publicKey());
+  const builder = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: net.passphrase,
+  });
+
+  if (input.signers && input.signers.length > 0) {
+    for (const s of input.signers) {
+      if (!s.publicKey) continue;
+      builder.addOperation(
+        Operation.setOptions({
+          signer: {
+            ed25519PublicKey: s.publicKey,
+            weight: Number(s.weight) || 0,
+          },
+        })
+      );
+    }
+  }
+
+  builder.addOperation(
+    Operation.setOptions({
+      lowThreshold: input.lowThreshold ?? 1,
+      medThreshold: input.mediumThreshold ?? 2,
+      highThreshold: input.highThreshold ?? 3,
+    })
+  );
+
+  const tx = builder.setTimeout(60).build();
+  tx.sign(source);
+  const res = await net.horizon.submitTransaction(tx);
+
+  const updatedAccount = await net.horizon.loadAccount(source.publicKey());
+  return {
+    hash: res.hash,
+    signers: updatedAccount.signers.map((s) => ({ key: s.key, weight: s.weight })),
+    thresholds: {
+      low: updatedAccount.thresholds.low_threshold,
+      med: updatedAccount.thresholds.med_threshold,
+      high: updatedAccount.thresholds.high_threshold,
+    },
+  };
+}
