@@ -1,5 +1,6 @@
 import {
   Account,
+  Asset,
   BASE_FEE,
   Keypair,
   Memo,
@@ -193,6 +194,71 @@ function normalizeAmount(amount: string | number): string {
   return n.toFixed(7).replace(/\.?0+$/, "");
 }
 
+// ---------------------------------------------------------------------------
+// Shared type for Horizon path records returned by strictSendPaths /
+// strictReceivePaths. We cast via `unknown` to avoid fighting the SDK's
+// generic type parameters across versions.
+// ---------------------------------------------------------------------------
+type PathRecord = {
+  source_amount?: string;
+  destination_amount?: string;
+  path?: Array<{ asset_type: string; asset_code?: string; asset_issuer?: string }>;
+};
+
+/**
+ * Fetch the best liquidity path from Horizon using the modern
+ * strictSendPaths / strictReceivePaths endpoints.
+ *
+ * Both methods take typed `Asset` objects so there is no asset-code / issuer
+ * string juggling that could silently produce empty results.
+ */
+async function fetchBestPath(
+  net: ServerNetwork,
+  sendAsset: Asset,
+  destAsset: Asset,
+  amount: string,
+  mode: "exact-in" | "exact-out"
+): Promise<PathRecord | null> {
+  // The SDK's Horizon.Server exposes these methods but TypeScript generics vary
+  // across versions; we cast once here so the rest of the code stays clean.
+  const server = net.horizon as unknown as {
+    strictSendPaths: (
+      sourceAsset: Asset,
+      sourceAmount: string,
+      destination: Asset[]
+    ) => { call: () => Promise<{ records: PathRecord[] }> };
+    strictReceivePaths: (
+      source: Asset[],
+      destinationAsset: Asset,
+      destinationAmount: string
+    ) => { call: () => Promise<{ records: PathRecord[] }> };
+  };
+
+  try {
+    let records: PathRecord[];
+    if (mode === "exact-in") {
+      const resp = await server.strictSendPaths(sendAsset, amount, [destAsset]).call();
+      records = resp.records ?? [];
+    } else {
+      const resp = await server.strictReceivePaths([sendAsset], destAsset, amount).call();
+      records = resp.records ?? [];
+    }
+    return records[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve a Horizon PathRecord hop into an Asset object. */
+function hopToAsset(p: { asset_type: string; asset_code?: string; asset_issuer?: string }): Asset {
+  if (p.asset_type === "native") return Asset.native();
+  return new Asset(p.asset_code!, p.asset_issuer!);
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 export interface SwapQuote {
   sendAmountMin: string;
   expectedReceive: string;
@@ -214,9 +280,15 @@ export interface SwapAnalyzeInput {
   sharpness?: string;
 }
 
+/**
+ * Fetch a real-time liquidity quote from Horizon without submitting a
+ * transaction.  Used by the Inspector "Preview Quote" button.
+ *
+ * Uses strictSendPaths / strictReceivePaths (which accept typed Asset objects)
+ * so there is no ambiguity about what asset code Horizon should look for.
+ */
 export async function analyzeSwap({
   net,
-  source,
   sendAsset = "XLM",
   destAsset = "USDC",
   amount,
@@ -229,68 +301,49 @@ export async function analyzeSwap({
     throw new Error("Invalid swap amount.");
   }
 
-  const maybePathAmount = (value: unknown) => {
-    if (typeof value !== "string") return undefined;
-    const n = Number(value);
-    return Number.isFinite(n) && n > 0 ? n : undefined;
-  };
+  const sendStellarAsset = resolveAsset(sendAsset);
+  const destStellarAsset = resolveAsset(destAsset);
 
-  let pathRecords: Record<string, unknown>[] = [];
-  try {
-    const sendIssuer = isNative(sendAsset) ? undefined : resolveAsset(sendAsset).getIssuer();
-    const destIssuer = isNative(destAsset) ? undefined : resolveAsset(destAsset).getIssuer();
-    const resp = await net.horizon
-      .paths({
-        sourceAssets: sendIssuer ? [`${sendAsset}:${sendIssuer}`] : ["native"],
-        destinationAssetType: destIssuer ? "credit_alphanum4" : "native",
-        destinationAssetCode: destIssuer ? undefined : "XLM",
-        destinationAssetIssuer: destIssuer || undefined,
-        sourceAccount: source.publicKey(),
-        sourceAmount: mode === "exact-in" ? String(numericAmount) : undefined,
-        destinationAmount: mode === "exact-out" ? String(numericAmount) : undefined,
-      })
-      .call();
-    pathRecords = Array.isArray(resp.records) ? resp.records : [];
-  } catch {
-    // best-effort: fall back to advisory mode below.
+  const best = await fetchBestPath(net, sendStellarAsset, destStellarAsset, amount, mode);
+
+  // If Horizon returned a path record, extract the quoted amounts from it.
+  const rawDestAmount = Number(best?.destination_amount ?? 0);
+  const rawSrcAmount = Number(best?.source_amount ?? 0);
+
+  if (!best || (mode === "exact-in" && rawDestAmount <= 0) || (mode === "exact-out" && rawSrcAmount <= 0)) {
+    throw new Error(
+      `Cannot find a viable liquidity path for ${sendAsset} → ${destAsset} on ${net.id}. ` +
+        "Ensure both assets are active and there is an order book or AMM pool connecting them."
+    );
   }
 
-  const best = pathRecords[0];
-
-  const expectedReceiveCandidates = [
-    best?.destination_amount,
-    best?.destinationAmount,
-  ].map(maybePathAmount);
-  const fallbackReceive = mode === "exact-in" ? numericAmount * 0.95 : numericAmount * 0.9;
+  // expectedReceive: for exact-in it is destination_amount; for exact-out it
+  // is the fixed destination amount the user asked for.
   const expectedReceive =
-    expectedReceiveCandidates.find(Boolean) ??
-    (Number.isFinite(fallbackReceive) ? fallbackReceive : 0);
-  if (!Number.isFinite(expectedReceive) || expectedReceive <= 0) {
-    throw new Error("Cannot find a viable liquidity path for this swap.");
-  }
+    mode === "exact-in" ? rawDestAmount : numericAmount;
 
-  const sendAmountMinBase = mode === "exact-in" ? numericAmount : undefined;
-  const sendAmountMinCandidates = [best?.source_amount, best?.sourceAmount].map(maybePathAmount);
+  // sendAmountMin: the minimum the source will receive after slippage.
+  // For exact-in this is the dest amount minus slippage; for exact-out the
+  // source amount is what the user will spend (with a +slippage cap).
+  const slippageFraction = slippageBps / 10000;
   const sendAmountMinRaw =
-    (mode === "exact-out"
-      ? sendAmountMinCandidates.find(Boolean)
-      : sendAmountMinBase) ??
-    numericAmount;
+    mode === "exact-in"
+      ? expectedReceive * (1 - slippageFraction)
+      : rawSrcAmount; // exact-out: source cost; caller caps with sendMax
 
-  const sendAmountMin = (Number(sendAmountMinRaw) * (1 - slippageBps / 10000))
-    .toFixed(7)
-    .replace(/\.?0+$/, "");
+  const sendAmountMin = sendAmountMinRaw.toFixed(7).replace(/\.?0+$/, "");
 
+  // Build a human-readable route label from intermediate hops.
   const pathLabels: string[] = [];
-  const assetArr = Array.isArray(best?.path) ? best.path : [];
-  for (const p of assetArr) {
-    if (p?.asset_type === "native") pathLabels.push("XLM");
-    else if (p?.asset_code && p?.asset_issuer) pathLabels.push(`${String(p.asset_code)}:${String(p.asset_issuer)}`);
+  for (const p of best.path ?? []) {
+    if (p.asset_type === "native") pathLabels.push("XLM");
+    else if (p.asset_code && p.asset_issuer)
+      pathLabels.push(`${p.asset_code}:${p.asset_issuer.slice(0, 6)}…`);
   }
 
   return {
     sendAmountMin,
-    expectedReceive: Number(expectedReceive).toFixed(7).replace(/\.?0+$/, ""),
+    expectedReceive: expectedReceive.toFixed(7).replace(/\.?0+$/, ""),
     route: pathLabels.length ? pathLabels.join(" → ") : "Direct",
     slippageBps,
     number: numericAmount,
@@ -309,8 +362,8 @@ export interface SwapExecuteInput extends SwapAnalyzeInput {
  * Steps:
  *  1. Pre-validate: verify the source account has sufficient balance.
  *  2. Auto-establish a trustline for the destination asset if missing.
- *  3. Fetch the best liquidity path from Horizon (strictSendPaths /
- *     strictReceivePaths, falling back to the older paths() endpoint).
+ *  3. Fetch the best liquidity path from Horizon via strictSendPaths /
+ *     strictReceivePaths (typed Asset objects, no string parameter juggling).
  *  4. Build + sign a pathPaymentStrictSend (exact-in) or
  *     pathPaymentStrictReceive (exact-out) transaction.
  *  5. Submit to the network and return txHash + actual amounts.
@@ -340,7 +393,7 @@ export async function executeSwap({
   const accountData = await net.horizon.loadAccount(source.publicKey());
   if (isNative(sendAsset)) {
     const nativeBal = accountData.balances.find((b) => b.asset_type === "native");
-    // Keep 1 XLM as minimum reserve.
+    // Keep 1 XLM as minimum account reserve.
     const available = nativeBal ? Number(nativeBal.balance) - 1 : 0;
     if (available < numericAmount) {
       throw new Error(
@@ -361,7 +414,7 @@ export async function executeSwap({
     }
   }
 
-  // 2. Auto-establish trustline for the destination asset if it is non-native.
+  // 2. Auto-establish trustline for the destination asset if non-native.
   if (!isNative(destAsset)) {
     const hasTrustline = accountData.balances.some(
       (b) =>
@@ -382,63 +435,9 @@ export async function executeSwap({
     }
   }
 
-  // 3. Fetch the best liquidity path.
-  type PathRecord = {
-    source_amount?: string;
-    destination_amount?: string;
-    path?: Array<{ asset_type: string; asset_code?: string; asset_issuer?: string }>;
-  };
-  let pathRecords: PathRecord[] = [];
+  // 3. Fetch the best liquidity path using typed Asset objects.
+  const best = await fetchBestPath(net, sendStellarAsset, destStellarAsset, amount, mode);
 
-  // Try the modern strict-send / strict-receive path endpoints first.
-  const horizonAny = net.horizon as unknown as Record<string, unknown>;
-  try {
-    if (mode === "exact-in" && typeof horizonAny.strictSendPaths === "function") {
-      const resp = await (
-        horizonAny.strictSendPaths as (
-          s: unknown,
-          a: string,
-          d: unknown[]
-        ) => { call: () => Promise<{ records: PathRecord[] }> }
-      )(sendStellarAsset, String(numericAmount), [destStellarAsset]).call();
-      pathRecords = resp.records ?? [];
-    } else if (mode === "exact-out" && typeof horizonAny.strictReceivePaths === "function") {
-      const resp = await (
-        horizonAny.strictReceivePaths as (
-          s: unknown[],
-          d: unknown,
-          a: string
-        ) => { call: () => Promise<{ records: PathRecord[] }> }
-      )([sendStellarAsset], destStellarAsset, String(numericAmount)).call();
-      pathRecords = resp.records ?? [];
-    }
-  } catch {
-    // Fall through to legacy endpoint below.
-  }
-
-  // Fall back to the legacy paths() endpoint if needed.
-  if (pathRecords.length === 0) {
-    try {
-      const sendIssuer = isNative(sendAsset) ? undefined : resolveAsset(sendAsset).getIssuer();
-      const destIssuer = isNative(destAsset) ? undefined : resolveAsset(destAsset).getIssuer();
-      const resp = await net.horizon
-        .paths({
-          sourceAssets: sendIssuer ? [`${sendAsset}:${sendIssuer}`] : ["native"],
-          destinationAssetType: destIssuer ? "credit_alphanum4" : "native",
-          destinationAssetCode: destIssuer ? undefined : "XLM",
-          destinationAssetIssuer: destIssuer || undefined,
-          sourceAccount: source.publicKey(),
-          sourceAmount: mode === "exact-in" ? String(numericAmount) : undefined,
-          destinationAmount: mode === "exact-out" ? String(numericAmount) : undefined,
-        })
-        .call();
-      pathRecords = Array.isArray(resp.records) ? (resp.records as PathRecord[]) : [];
-    } catch {
-      // Will throw the "no path" error below.
-    }
-  }
-
-  const best = pathRecords[0];
   if (!best) {
     throw new Error(
       `Swap Asset: no liquidity path found for ${sendAsset} → ${destAsset}. ` +
@@ -446,13 +445,7 @@ export async function executeSwap({
     );
   }
 
-  // Resolve intermediate hop assets.
-  const { Asset: StellarAsset } = await import("@stellar/stellar-sdk");
-  const resolveHop = (p: { asset_type: string; asset_code?: string; asset_issuer?: string }) => {
-    if (p.asset_type === "native") return StellarAsset.native();
-    return new StellarAsset(p.asset_code!, p.asset_issuer!);
-  };
-  const intermediatePath = (Array.isArray(best.path) ? best.path : []).map(resolveHop);
+  const intermediatePath = (best.path ?? []).map(hopToAsset);
 
   // 4. Build + sign the transaction.
   const freshAccount = await net.horizon.loadAccount(source.publicKey());
@@ -465,10 +458,10 @@ export async function executeSwap({
   let receivedAmount: string;
 
   if (mode === "exact-in") {
-    // pathPaymentStrictSend: spend exactly `numericAmount`, receive at least `destMin`.
+    // pathPaymentStrictSend: spend exactly `numericAmount`, receive ≥ `destMin`.
     const expectedReceive =
       Number(best.destination_amount ?? 0) > 0
-        ? Number(best.destination_amount)
+        ? Number(best.destination_amount!)
         : numericAmount * 0.95;
     const destMin = (expectedReceive * (1 - slippageFraction)).toFixed(7).replace(/\.?0+$/, "");
 
@@ -476,7 +469,7 @@ export async function executeSwap({
       Operation.pathPaymentStrictSend({
         sendAsset: sendStellarAsset,
         sendAmount: normalizeAmount(numericAmount),
-        destination: source.publicKey(), // swap-to-self; caller can override downstream
+        destination: source.publicKey(), // swap-to-self; downstream nodes get receivedAmount
         destAsset: destStellarAsset,
         destMin,
         path: intermediatePath,
@@ -485,9 +478,11 @@ export async function executeSwap({
     sentAmount = normalizeAmount(numericAmount);
     receivedAmount = expectedReceive.toFixed(7).replace(/\.?0+$/, "");
   } else {
-    // pathPaymentStrictReceive: receive exactly `numericAmount`, spend at most `sendMax`.
+    // pathPaymentStrictReceive: receive exactly `numericAmount`, spend ≤ `sendMax`.
     const expectedSend =
-      Number(best.source_amount ?? 0) > 0 ? Number(best.source_amount) : numericAmount * 1.05;
+      Number(best.source_amount ?? 0) > 0
+        ? Number(best.source_amount!)
+        : numericAmount * 1.05;
     const sendMax = (expectedSend * (1 + slippageFraction)).toFixed(7).replace(/\.?0+$/, "");
 
     txBuilder.addOperation(
