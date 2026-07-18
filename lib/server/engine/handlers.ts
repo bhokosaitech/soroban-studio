@@ -2,6 +2,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 import {
   addTrustline,
   buildInvoiceUri,
+  configureMultisigAccount,
   createFundedKeypair,
   getNativeBalance,
   muxedAddress,
@@ -141,6 +142,72 @@ const HANDLERS: Record<string, BlockHandler> = {
     ctx.outputs[node.id] = { txHash: hash };
     ctx.outputs._last = { txHash: hash };
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "success", message: `Trustline set`, txHash: hash });
+  },
+
+  "multisig-wallet": async (node, ctx) => {
+    const kp = requireAccount(ctx);
+    const rawSigners = (node.data.signers as Array<{ publicKey?: string; weight?: number }>) || [];
+    const signers = rawSigners
+      .filter((s) => s.publicKey && String(s.publicKey).trim().length > 0)
+      .map((s) => ({
+        publicKey: String(s.publicKey).trim(),
+        weight: num(s.weight) ?? 1,
+      }));
+
+    const lowThreshold = num(node.data.lowThreshold) ?? 1;
+    const mediumThreshold = num(node.data.mediumThreshold) ?? 2;
+    const highThreshold = num(node.data.highThreshold) ?? 3;
+
+    if (
+      lowThreshold < 0 ||
+      lowThreshold > 255 ||
+      mediumThreshold < 0 ||
+      mediumThreshold > 255 ||
+      highThreshold < 0 ||
+      highThreshold > 255
+    ) {
+      throw new Error("Multisig Wallet: Thresholds must be between 0 and 255.");
+    }
+
+    if (lowThreshold > mediumThreshold || mediumThreshold > highThreshold) {
+      throw new Error("Multisig Wallet: Thresholds must satisfy low <= medium <= high.");
+    }
+
+    const totalWeight = signers.reduce((acc, s) => acc + s.weight, 1);
+    if (totalWeight < highThreshold) {
+      throw new Error(
+        `Multisig Wallet: Total signer weight (${totalWeight}) is less than high threshold (${highThreshold}).`
+      );
+    }
+
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "network",
+      message: `Configuring ${signers.length} signer(s) & thresholds (low: ${lowThreshold}, med: ${mediumThreshold}, high: ${highThreshold})…`,
+    });
+
+    const result = await configureMultisigAccount(ctx.net, kp, {
+      signers,
+      lowThreshold,
+      mediumThreshold,
+      highThreshold,
+    });
+
+    ctx.outputs[node.id] = {
+      txHash: result.hash,
+      signers: result.signers,
+      thresholds: result.thresholds,
+    };
+    ctx.outputs._last = { txHash: result.hash };
+
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "success",
+      message: `Multisig configured on ${kp.publicKey().slice(0, 6)}…${kp.publicKey().slice(-4)}`,
+      txHash: result.hash,
+    });
   },
 
   "send-payment": async (node, ctx) => {
