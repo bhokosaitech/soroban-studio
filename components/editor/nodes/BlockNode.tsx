@@ -86,6 +86,13 @@ function summarize(type: string, f: Record<string, unknown>): string {
       return f.amount ? `${f.amount} ${f.asset ?? ""}` : "";
     case "swap-asset":
       return f.amount ? `${f.amount} ${String(f.sendAsset ?? "XLM")} → ${String(f.destAsset ?? "USDC")}` : "";
+    case "multisig-wallet": {
+      const signers = (f.signers as Array<unknown>) || [];
+      const low = f.lowThreshold ?? 1;
+      const med = f.mediumThreshold ?? 2;
+      const high = f.highThreshold ?? 3;
+      return `${signers.length} signer(s) · L:${low} M:${med} H:${high}`;
+    }
     case "condition":
       return conditionSummary(f);
     default:

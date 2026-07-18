@@ -1,8 +1,11 @@
 import { Keypair } from "@stellar/stellar-sdk";
 import {
   addTrustline,
+  analyzeSwap,
   buildInvoiceUri,
+  configureMultisigAccount,
   createFundedKeypair,
+  executeSwap,
   getNativeBalance,
   muxedAddress,
   sendPayment,
@@ -141,6 +144,72 @@ const HANDLERS: Record<string, BlockHandler> = {
     ctx.outputs[node.id] = { txHash: hash };
     ctx.outputs._last = { txHash: hash };
     ctx.emit({ nodeId: node.id, blockType: node.type, level: "success", message: `Trustline set`, txHash: hash });
+  },
+
+  "multisig-wallet": async (node, ctx) => {
+    const kp = requireAccount(ctx);
+    const rawSigners = (node.data.signers as Array<{ publicKey?: string; weight?: number }>) || [];
+    const signers = rawSigners
+      .filter((s) => s.publicKey && String(s.publicKey).trim().length > 0)
+      .map((s) => ({
+        publicKey: String(s.publicKey).trim(),
+        weight: num(s.weight) ?? 1,
+      }));
+
+    const lowThreshold = num(node.data.lowThreshold) ?? 1;
+    const mediumThreshold = num(node.data.mediumThreshold) ?? 2;
+    const highThreshold = num(node.data.highThreshold) ?? 3;
+
+    if (
+      lowThreshold < 0 ||
+      lowThreshold > 255 ||
+      mediumThreshold < 0 ||
+      mediumThreshold > 255 ||
+      highThreshold < 0 ||
+      highThreshold > 255
+    ) {
+      throw new Error("Multisig Wallet: Thresholds must be between 0 and 255.");
+    }
+
+    if (lowThreshold > mediumThreshold || mediumThreshold > highThreshold) {
+      throw new Error("Multisig Wallet: Thresholds must satisfy low <= medium <= high.");
+    }
+
+    const totalWeight = signers.reduce((acc, s) => acc + s.weight, 1);
+    if (totalWeight < highThreshold) {
+      throw new Error(
+        `Multisig Wallet: Total signer weight (${totalWeight}) is less than high threshold (${highThreshold}).`
+      );
+    }
+
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "network",
+      message: `Configuring ${signers.length} signer(s) & thresholds (low: ${lowThreshold}, med: ${mediumThreshold}, high: ${highThreshold})…`,
+    });
+
+    const result = await configureMultisigAccount(ctx.net, kp, {
+      signers,
+      lowThreshold,
+      mediumThreshold,
+      highThreshold,
+    });
+
+    ctx.outputs[node.id] = {
+      txHash: result.hash,
+      signers: result.signers,
+      thresholds: result.thresholds,
+    };
+    ctx.outputs._last = { txHash: result.hash };
+
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "success",
+      message: `Multisig configured on ${kp.publicKey().slice(0, 6)}…${kp.publicKey().slice(-4)}`,
+      txHash: result.hash,
+    });
   },
 
   "send-payment": async (node, ctx) => {
@@ -353,11 +422,17 @@ const HANDLERS: Record<string, BlockHandler> = {
       throw new Error("Swap Asset: amount must be greater than zero.");
     }
 
-    ctx.emit({ nodeId: node.id, blockType: node.type, level: "network", message: `Analyzing ${sendAsset} → ${destAsset} swap (${mode})…` });
+    // Step 1 — fetch a live quote so we can log the preview before executing.
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "network",
+      message: `Fetching ${sendAsset} → ${destAsset} liquidity quote (${mode})…`,
+    });
 
+    let quote;
     try {
-      const { analyzeSwap } = await import("../stellar/operations");
-      const quote = await analyzeSwap({
+      quote = await analyzeSwap({
         net: ctx.net,
         source: account,
         sendAsset,
@@ -367,20 +442,53 @@ const HANDLERS: Record<string, BlockHandler> = {
         slippageBps,
         sharpness,
       });
+    } catch (e) {
+      throw new Error(`Swap Asset (quote): ${(e as Error).message}`);
+    }
 
-      ctx.outputs[node.id] = {
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "info",
+      message:
+        `Quote: ~${quote.expectedReceive} ${destAsset} received` +
+        ` (route: ${quote.route}, min after ${slippageBps / 100}% slippage: ${quote.sendAmountMin} ${sendAsset}).`,
+    });
+
+    // Step 2 — execute the real path-payment transaction.
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "network",
+      message: `Submitting ${mode === "exact-out" ? "pathPaymentStrictReceive" : "pathPaymentStrictSend"} transaction…`,
+    });
+
+    try {
+      const result = await executeSwap({
+        net: ctx.net,
+        source: account,
         sendAsset,
         destAsset,
-        amount,
+        amount: String(amount),
+        mode: mode as "exact-in" | "exact-out",
+        slippageBps,
+        sharpness,
+        quote,
+      });
+
+      ctx.outputs[node.id] = {
+        txHash: result.txHash,
+        sendAsset,
+        destAsset,
+        sentAmount: result.sentAmount,
+        receivedAmount: result.receivedAmount,
         mode,
         slippageBps,
-        expectedReceive: quote.expectedReceive,
-        sendAmountMin: quote.sendAmountMin,
         route: quote.route,
-        sharpness,
       };
       ctx.outputs._last = {
-        ...ctx.outputs[node.id],
+        txHash: result.txHash,
+        amount: result.receivedAmount,
         status: "succeeded",
       };
 
@@ -389,11 +497,13 @@ const HANDLERS: Record<string, BlockHandler> = {
         blockType: node.type,
         level: "success",
         message:
-          `Swap quote ready: receive ~${quote.expectedReceive} ${destAsset}` +
-          ` (min ${quote.sendAmountMin} ${sendAsset} after ${slippageBps / 100}% slippage).`,
+          `Swap confirmed — sent ${result.sentAmount} ${sendAsset},` +
+          ` received ${result.receivedAmount} ${destAsset}.` +
+          ` ${ctx.net.explorerTx(result.txHash)}`,
+        txHash: result.txHash,
       });
     } catch (e) {
-      throw new Error(`Swap Asset: ${(e as Error).message}`);
+      throw new Error(explainSwapError(e, sendAsset, destAsset));
     }
   },
 
@@ -448,6 +558,25 @@ function explainHorizonError(e: unknown, asset: string): string {
   if (codes.includes("op_underfunded")) return "Payment failed: source account is underfunded.";
   if (codes.includes("tx_bad_seq")) return "Payment failed: bad sequence — retry the run.";
   return `Payment failed${codes.length ? `: ${codes.join(", ")}` : `: ${(e as Error).message}`}`;
+}
+
+function explainSwapError(e: unknown, sendAsset: string, destAsset: string): string {
+  // Surface the original message from executeSwap first (already human-readable).
+  const msg = (e as Error).message ?? "";
+  if (msg.startsWith("Swap Asset:")) return msg;
+
+  const codes = extractResultCodes(e);
+  if (codes.includes("op_too_few_offers"))
+    return `Swap Asset: no liquidity path found for ${sendAsset} → ${destAsset}. Try a smaller amount or wider slippage.`;
+  if (codes.includes("op_cross_self"))
+    return `Swap Asset: the order would cross your own offers. Use a different account.`;
+  if (codes.includes("op_underfunded"))
+    return `Swap Asset: insufficient ${sendAsset} balance to complete the swap.`;
+  if (codes.includes("op_no_trust"))
+    return `Swap Asset: missing trustline for ${destAsset}. The auto-establish step failed — try adding the trustline manually first.`;
+  if (codes.includes("tx_bad_seq"))
+    return "Swap Asset: bad sequence number — retry the run.";
+  return `Swap Asset failed${codes.length ? `: ${codes.join(", ")}` : `: ${msg}`}`;
 }
 
 function extractResultCodes(e: unknown): string[] {
