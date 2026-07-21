@@ -97,6 +97,10 @@ function summarize(type: string, f: Record<string, unknown>): string {
       return conditionSummary(f);
     case "loop-batch":
       return loopSummary(f);
+    case "send-notification":
+      const ch = String(f.channel ?? "telegram");
+      const ev = String(f.event ?? "always");
+      return `${ch} · ${ev}`;
     default:
       return "";
   }

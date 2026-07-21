@@ -337,6 +337,92 @@ const HANDLERS: Record<string, BlockHandler> = {
     });
   },
 
+  "send-notification": async (node, ctx) => {
+    const channel = str(node.data.channel) ?? "telegram";
+    const event = str(node.data.event) ?? "always";
+    const message = str(node.data.message);
+    const destination = str(node.data.destination);
+
+    if (!message) throw new Error("Send Notification: message is required.");
+    if (!destination) throw new Error("Send Notification: destination is required.");
+
+    let shouldSend = event === "always";
+    if (!shouldSend) {
+      const lastStatus = str(ctx.outputs._last?.status);
+      if (event === "on-success") shouldSend = lastStatus === "succeeded";
+      else if (event === "on-failure") shouldSend = lastStatus === "failed";
+      else if (event === "custom-condition") {
+        const condition = str(node.data.customCondition);
+        shouldSend = condition ? evaluateCondition(condition, ctx.outputs) : false;
+      } else if (event === "threshold") {
+        shouldSend = evaluateThreshold(node.data, ctx.outputs);
+      }
+    }
+
+    if (!shouldSend) {
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "info",
+        message: `Notification skipped (${event}).`,
+      });
+      return;
+    }
+
+    const rendered = renderTemplate(message, ctx.outputs);
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "network",
+      message: `Sending ${channel} notification to ${destination}…`,
+    });
+
+    try {
+      let res: Response;
+      if (channel === "discord") {
+        res = await fetch(destination, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ content: rendered }),
+        });
+      } else if (channel === "telegram") {
+        const botToken = process.env.TELEGRAM_BOT_TOKEN;
+        if (!botToken) throw new Error("TELEGRAM_BOT_TOKEN not configured.");
+        res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ chat_id: destination, text: rendered }),
+        });
+      } else {
+        // Email — simulated via a mailto link for now
+        ctx.emit({
+          nodeId: node.id,
+          blockType: node.type,
+          level: "success",
+          message: `Email notification ready for ${destination}: "${rendered.slice(0, 60)}${rendered.length > 60 ? "…" : ""}"`,
+        });
+        ctx.outputs[node.id] = { channel, sent: true, simulated: true };
+        return;
+      }
+
+      ctx.outputs[node.id] = { channel, status: res.status, sent: res.ok };
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: res.ok ? "success" : "warn",
+        message: `${channel.charAt(0).toUpperCase() + channel.slice(1)} notification ${res.ok ? "sent" : `failed (${res.status})`}`,
+      });
+    } catch (e) {
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "error",
+        message: `Notification failed: ${(e as Error).message}`,
+      });
+      ctx.outputs[node.id] = { channel, sent: false, error: (e as Error).message };
+    }
+  },
+
   condition: async (node, ctx) => {
     const subject = str(node.data.subject) ?? "custom";
 
@@ -583,6 +669,44 @@ function extractResultCodes(e: unknown): string[] {
   const data = (e as { response?: { data?: { extras?: { result_codes?: { operations?: string[]; transaction?: string } } } } })?.response?.data;
   const rc = data?.extras?.result_codes;
   return [...(rc?.operations ?? []), ...(rc?.transaction ? [rc.transaction] : [])];
+}
+
+function evaluateCondition(condition: string, outputs: Record<string, Record<string, unknown>>): boolean {
+  const flat = Object.values(outputs).reduce((acc, o) => ({ ...acc, ...o }), {} as Record<string, unknown>);
+  const expr = condition.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    const v = flat[key];
+    return typeof v === "number" ? String(v) : typeof v === "string" ? `"${v}"` : "0";
+  });
+  try {
+    const fn = new Function(`return ${expr}`);
+    return !!fn();
+  } catch {
+    return false;
+  }
+}
+
+function evaluateThreshold(data: Record<string, unknown>, outputs: Record<string, Record<string, unknown>>): boolean {
+  const flat = Object.values(outputs).reduce((acc, o) => ({ ...acc, ...o }), {} as Record<string, unknown>);
+  const field = String(data.thresholdField ?? "balance");
+  let left: number | string;
+  if (field === "balance") {
+    left = Number(flat.balance ?? NaN);
+  } else if (field === "lastAmount") {
+    left = Number(flat.lastAmount ?? NaN);
+  } else {
+    left = asNumberOrString(String(data.thresholdValue ?? ""));
+  }
+  const right = asNumberOrString(String(data.thresholdValue ?? ""));
+  const op = String(data.thresholdOp ?? "gt");
+  return compareValues(left, right, op);
+}
+
+function renderTemplate(template: string, outputs: Record<string, Record<string, unknown>>): string {
+  const flat = Object.values(outputs).reduce((acc, o) => ({ ...acc, ...o }), {} as Record<string, unknown>);
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    const v = flat[key];
+    return v !== undefined && v !== null ? String(v) : `{{${key}}}`;
+  });
 }
 
 const OP_LABEL: Record<string, string> = {

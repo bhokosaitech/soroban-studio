@@ -80,6 +80,27 @@ console.log("Payment tx:", res.hash);`;
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ workflow: ${js(type)} }),
 });`;
+    case "send-notification": {
+      const ch = String(data.channel ?? "telegram");
+      const dest = js(data.destination);
+      const msg = js(String(data.message ?? ""));
+      if (ch === "discord") {
+        return `await fetch(${dest}, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ content: ${msg} }),
+});`;
+      } else if (ch === "telegram") {
+        return `const botToken = process.env.TELEGRAM_BOT_TOKEN;
+await fetch(\`https://api.telegram.org/bot\${botToken}/sendMessage\`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ chat_id: ${dest}, text: ${msg} }),
+});`;
+      }
+      return `// Email notification — integrate with your mail provider (SendGrid, Nodemailer, etc.)
+console.log("Email to", ${dest}, ":", ${msg});`;
+    }
     case "invoke-contract":
       return `  // Invoke Soroban contract ${data.contractId ?? "<contract>"}
   // Use rpc.Server + contract.call("${data.method ?? "method"}", ...args)

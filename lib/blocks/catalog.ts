@@ -348,6 +348,99 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
     ],
   },
 
+  // ---------------------------------------------------------------- notification
+  {
+    type: "send-notification",
+    label: "Send Notification",
+    category: "notification",
+    description: "Send a real-time alert via Telegram, Discord, or Email when specific events occur.",
+    icon: "BellRing",
+    network: true,
+    handles: { target: true, source: true },
+    fields: [
+      {
+        key: "channel",
+        label: "Channel",
+        type: "select",
+        default: "telegram",
+        options: [
+          { label: "Telegram", value: "telegram" },
+          { label: "Discord", value: "discord" },
+          { label: "Email", value: "email" },
+        ],
+      },
+      {
+        key: "event",
+        label: "Notify when",
+        type: "select",
+        default: "always",
+        options: [
+          { label: "Always (when reached)", value: "always" },
+          { label: "Transaction succeeds", value: "on-success" },
+          { label: "Transaction fails", value: "on-failure" },
+          { label: "Custom condition", value: "custom-condition" },
+          { label: "Threshold reached", value: "threshold" },
+        ],
+      },
+      {
+        key: "message",
+        label: "Message",
+        type: "text",
+        required: true,
+        placeholder: "Payment of {{amount}} {{asset}} completed!",
+        help: "Use {{variable}} to insert workflow data.",
+      },
+      {
+        key: "destination",
+        label: "Destination",
+        type: "text",
+        required: true,
+        placeholder: "Telegram chat ID / Discord webhook / Email address",
+      },
+      {
+        key: "customCondition",
+        label: "Custom condition",
+        type: "text",
+        placeholder: "balance > 100",
+        showIf: { field: "event", in: ["custom-condition"] },
+        help: "A simple expression evaluated against workflow outputs.",
+      },
+      {
+        key: "thresholdField",
+        label: "Check",
+        type: "select",
+        default: "balance",
+        showIf: { field: "event", in: ["threshold"] },
+        options: [
+          { label: "Wallet balance (XLM)", value: "balance" },
+          { label: "Last payment amount", value: "lastAmount" },
+          { label: "Custom value", value: "custom" },
+        ],
+      },
+      {
+        key: "thresholdOp",
+        label: "Condition",
+        type: "select",
+        default: "gt",
+        showIf: { field: "event", in: ["threshold"] },
+        options: [
+          { label: "is greater than", value: "gt" },
+          { label: "is greater than or equal to", value: "gte" },
+          { label: "is less than", value: "lt" },
+          { label: "is less than or equal to", value: "lte" },
+          { label: "is equal to", value: "eq" },
+        ],
+      },
+      {
+        key: "thresholdValue",
+        label: "Threshold",
+        type: "text",
+        placeholder: "100",
+        showIf: { field: "event", in: ["threshold"] },
+      },
+    ],
+  },
+
   // -------------------------------------------------------------- automation
   {
     type: "condition",
