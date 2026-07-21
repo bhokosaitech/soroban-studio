@@ -6,7 +6,7 @@ import type { BlockField } from "@/lib/blocks/types";
 import { ASSET_OPTIONS } from "@/lib/blocks/assets";
 import { useEditorStore } from "@/lib/store/editor";
 import { useVaultStore } from "@/lib/vault/store";
-import { Trash2 } from "lucide-react";
+import { Trash2, Download } from "lucide-react";
 
 /**
  * Right-hand inspector — edits the selected node's fields (from the catalog)
@@ -311,6 +311,24 @@ function CSVImportInspector({
     updateField(node.id, "errors", []);
   };
 
+  const handleDownloadTemplate = () => {
+    const csvContent =
+      "destination,amount,memo,contractId\n" +
+      "GAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42R5B6CQWKZ6GSC,100,Payroll March,CA3D5KRYM6CB7OWQ6TWY2S4M4V4ZP5T5277RMEA7YXZGLLJTYZEW323J\n" +
+      "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFXYSFCEO2L2JPOPO6YW7,50.5,Airdrop Batch 1,CA3D5KRYM6CB7OWQ6TWY2S4M4V4ZP5T5277RMEA7YXZGLLJTYZEW323J\n" +
+      "GC567L4E2NXZN524W4D5L5YJ6FCEW34D25Z63J3MVO43BLSVKNXYW4B7,250,NFT Distribution,CA3D5KRYM6CB7OWQ6TWY2S4M4V4ZP5T5277RMEA7YXZGLLJTYZEW323J\n";
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "sample-template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const MAPPABLE_FIELDS = [
     { key: "destination", label: "Recipient Address (destination)" },
     { key: "amount", label: "Amount (amount)" },
@@ -340,20 +358,32 @@ function CSVImportInspector({
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {/* File Uploader */}
         {!csvName ? (
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-6 text-center hover:border-accent hover:bg-off transition-all"
-          >
-            <span className="text-[20px]">📁</span>
-            <span className="mt-2 text-[12px] font-medium text-ink">Upload CSV File</span>
-            <span className="mt-1 text-[10px] text-muted">Drag & drop or click to browse</span>
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept=".csv"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
+          <div className="space-y-2">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-6 text-center transition-all hover:border-accent hover:bg-off"
+            >
+              <span className="text-[20px]">📁</span>
+              <span className="mt-2 text-[12px] font-medium text-ink">Upload CSV File</span>
+              <span className="mt-1 text-[10px] text-muted">Drag & drop or click to browse</span>
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".csv"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </div>
+            <div className="flex items-center justify-center">
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="flex items-center gap-1.5 rounded-md border border-border bg-off px-3 py-1.5 text-[11px] font-medium text-ink transition-colors hover:border-accent hover:bg-white"
+              >
+                <Download size={13} className="text-accent" />
+                <span>Download Sample Template</span>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="rounded-lg border border-border bg-off p-3">
@@ -362,12 +392,22 @@ function CSVImportInspector({
                 <p className="truncate text-[12px] font-semibold text-ink">{csvName}</p>
                 <p className="text-[10px] text-muted">{rows.length} rows detected</p>
               </div>
-              <button
-                onClick={handleRemove}
-                className="text-[11px] font-medium text-accent hover:underline"
-              >
-                Remove
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownloadTemplate}
+                  className="flex items-center gap-1 text-[11px] font-medium text-muted hover:text-ink"
+                  title="Download sample template"
+                >
+                  <Download size={12} />
+                  <span>Template</span>
+                </button>
+                <button
+                  onClick={handleRemove}
+                  className="text-[11px] font-medium text-accent hover:underline"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           </div>
         )}
