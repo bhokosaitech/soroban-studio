@@ -112,6 +112,7 @@ ${signerOps ? signerOps + "\n" : ""}  multisigBuilder.addOperation(Operation.set
   multisigTx.sign(account);
   const res = await horizon.submitTransaction(multisigTx);
   console.log("Multisig configured, tx:", res.hash);`;
+    }
     case "liquidity-pool": {
       const action = data.action ?? "deposit";
       const assetA = data.assetA ?? "XLM";
@@ -156,6 +157,7 @@ ${signerOps ? signerOps + "\n" : ""}  multisigBuilder.addOperation(Operation.set
       } else {
         return `  // Query Liquidity Pool ${assetA}/${assetB} details
   console.log("Fetching pool info for ${assetA}/${assetB}...");`;
+      }
     }
     case "swap-asset": {
       const mode = typeof data.mode === "string" && data.mode === "exact-out" ? "exact-out" : "exact-in";
