@@ -12,6 +12,7 @@ const ORDER: BlockCategory[] = [
   "asset",
   "contract",
   "automation",
+  "notification",
   "output",
 ];
 

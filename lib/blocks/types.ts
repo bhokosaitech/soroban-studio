@@ -14,6 +14,7 @@ export type BlockCategory =
   | "asset"
   | "contract"
   | "automation"
+  | "notification"
   | "output";
 
 export type FieldType =
@@ -93,5 +94,6 @@ export const CATEGORY_META: Record<
   asset: { label: "Assets", colorVar: "--node-asset", dot: "#d97706" },
   contract: { label: "Contracts", colorVar: "--node-contract", dot: "#7c3aed" },
   automation: { label: "Automation", colorVar: "--node-automation", dot: "#db2777" },
+  notification: { label: "Notifications", colorVar: "--node-notification", dot: "#0891b2" },
   output: { label: "Output", colorVar: "--muted", dot: "#6b6a66" },
 };
