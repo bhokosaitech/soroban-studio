@@ -84,6 +84,13 @@ function summarize(type: string, f: Record<string, unknown>): string {
       return typeof f.url === "string" ? f.url.replace(/^https?:\/\//, "") : "";
     case "create-invoice":
       return f.amount ? `${f.amount} ${f.asset ?? ""}` : "";
+    case "multisig-wallet": {
+      const signers = (f.signers as Array<unknown>) || [];
+      const low = f.lowThreshold ?? 1;
+      const med = f.mediumThreshold ?? 2;
+      const high = f.highThreshold ?? 3;
+      return `${signers.length} signer(s) · L:${low} M:${med} H:${high}`;
+    }
     case "condition":
       return conditionSummary(f);
     case "csv-import":

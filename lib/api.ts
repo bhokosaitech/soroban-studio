@@ -194,3 +194,92 @@ export async function listSchedules(): Promise<{ mode: string; schedules: Schedu
 export async function cancelScheduleReq(id: string): Promise<void> {
   await fetch(`${API_URL}/api/schedules/${id}`, { method: "DELETE" });
 }
+
+export type ShareMode = "readonly" | "fork";
+
+export interface ShareInfo {
+  slug: string;
+  mode: ShareMode;
+  revoked: boolean;
+  authorName?: string | null;
+}
+
+/** Fetch the given project's active share link, or null if it hasn't been shared. */
+export async function getProjectShare(projectId: string): Promise<ShareInfo | null> {
+  const res = await fetch(`${API_URL}/api/projects/${projectId}/share`);
+  if (!res.ok) throw new Error("Could not load share status.");
+  const data = (await res.json()) as { share: ShareInfo | null };
+  return data.share;
+}
+
+/** Publish the project (or return its existing link) in the given access mode. */
+export async function createProjectShare(projectId: string, mode: ShareMode): Promise<ShareInfo> {
+  const res = await fetch(`${API_URL}/api/projects/${projectId}/share`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? "Could not create share link.");
+  }
+  const data = (await res.json()) as { share: ShareInfo };
+  return data.share;
+}
+
+/** Change a project's share mode, or revoke its link. */
+export async function updateProjectShare(
+  projectId: string,
+  patch: { mode?: ShareMode; revoked?: boolean }
+): Promise<ShareInfo> {
+  const res = await fetch(`${API_URL}/api/projects/${projectId}/share`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? "Could not update share link.");
+  }
+  const data = (await res.json()) as { share: ShareInfo };
+  return data.share;
+}
+
+export interface SharedWorkflow {
+  slug: string;
+  name: string;
+  description?: string | null;
+  network: string;
+  workflow: Workflow;
+  mode: ShareMode;
+  authorName?: string | null;
+  createdAt: string;
+}
+
+/** Fetch a shared workflow snapshot by its public slug (no auth required). */
+export async function fetchShare(slug: string): Promise<SharedWorkflow> {
+  const res = await fetch(`${API_URL}/api/shares/${slug}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? "Could not load this share link.");
+  }
+  return res.json();
+}
+
+export class UnauthorizedError extends Error {
+  constructor() {
+    super("unauthorized");
+    this.name = "UnauthorizedError";
+  }
+}
+
+/** Fork a shared workflow into the signed-in user's own workspace. Returns the new project id. */
+export async function forkShare(slug: string): Promise<{ id: string }> {
+  const res = await fetch(`${API_URL}/api/shares/${slug}/fork`, { method: "POST" });
+  if (res.status === 401) throw new UnauthorizedError();
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? "Could not fork this workflow.");
+  }
+  return res.json();
+}

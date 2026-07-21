@@ -24,7 +24,8 @@ export type FieldType =
   | "address"
   | "asset"
   | "wallet"
-  | "secret";
+  | "secret"
+  | "signers";
 
 /** A configurable parameter shown in the node inspector. */
 export interface BlockField {

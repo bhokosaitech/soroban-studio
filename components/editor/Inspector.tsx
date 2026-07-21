@@ -6,7 +6,8 @@ import type { BlockField } from "@/lib/blocks/types";
 import { ASSET_OPTIONS } from "@/lib/blocks/assets";
 import { useEditorStore } from "@/lib/store/editor";
 import { useVaultStore } from "@/lib/vault/store";
-import { Trash2, Download } from "lucide-react";
+import { Trash2, Download, Plus, X } from "lucide-react";
+import { useState } from "react";
 
 /**
  * Right-hand inspector — edits the selected node's fields (from the catalog)
@@ -75,6 +76,25 @@ export function Inspector() {
         {def.fields.length === 0 && (
           <p className="text-[12px] text-muted">This block has no configuration.</p>
         )}
+        {def.type === "multisig-wallet" && (() => {
+          const low = Number(fields.lowThreshold ?? 1);
+          const med = Number(fields.mediumThreshold ?? 2);
+          const high = Number(fields.highThreshold ?? 3);
+          const signers = (fields.signers as Array<{ publicKey: string; weight: number }>) || [];
+          const totalWeight = signers.reduce((acc, s) => acc + (Number(s.weight) || 0), 1);
+          const err =
+            low > med || med > high
+              ? "Threshold rule violated: Low ≤ Medium ≤ High required."
+              : totalWeight < high
+              ? `Total signer weight (${totalWeight}) is less than High threshold (${high}). Account could be locked.`
+              : null;
+          if (!err) return null;
+          return (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-[11px] leading-relaxed text-red-700">
+              ⚠️ {err}
+            </div>
+          );
+        })()}
         {def.fields
           .filter((field) => {
             if (!field.showIf) return true;
@@ -116,6 +136,10 @@ function Field({
 
   if (field.type === "wallet") {
     return <WalletField field={field} value={value} onChange={onChange} />;
+  }
+
+  if (field.type === "signers") {
+    return <SignersField field={field} value={value} onChange={onChange} />;
   }
 
   if (field.type === "boolean") {
@@ -231,6 +255,137 @@ function WalletField({
           </option>
         ))}
       </select>
+      <style jsx>{inputStyle}</style>
+    </Labeled>
+  );
+}
+
+/** Signers configuration for multisig wallets. */
+interface Signer {
+  publicKey: string;
+  weight: number;
+}
+
+function SignersField({
+  field,
+  value,
+  onChange,
+}: {
+  field: BlockField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const signers = (value as Signer[]) || [];
+  const [newPublicKey, setNewPublicKey] = useState("");
+  const [newWeight, setNewWeight] = useState(1);
+  const [keyError, setKeyError] = useState<string | null>(null);
+
+  const label = (
+    <span>
+      {field.label}
+      {field.required && <span className="text-accent"> *</span>}
+    </span>
+  );
+
+  const isValidStellarKey = (key: string) => /^G[A-Z2-7]{55}$/.test(key);
+
+  const addSigner = () => {
+    const key = newPublicKey.trim();
+    if (!key) return;
+    if (!isValidStellarKey(key)) {
+      setKeyError("Invalid Stellar public key (must start with G, 56 chars).");
+      return;
+    }
+    setKeyError(null);
+    const updated = [...signers, { publicKey: key, weight: Math.min(255, Math.max(1, newWeight)) }];
+    onChange(updated);
+    setNewPublicKey("");
+    setNewWeight(1);
+  };
+
+  const removeSigner = (index: number) => {
+    const updated = signers.filter((_, i) => i !== index);
+    onChange(updated);
+  };
+
+  const updateSigner = (index: number, key: keyof Signer, val: string | number) => {
+    const updated = [...signers];
+    if (key === "weight") {
+      val = Math.min(255, Math.max(0, parseInt(String(val)) || 0));
+    }
+    updated[index] = { ...updated[index], [key]: val };
+    onChange(updated);
+  };
+
+  return (
+    <Labeled label={label} help={field.help}>
+      <div className="space-y-2">
+        {signers.map((signer, index) => (
+          <div key={index} className="flex items-center gap-2 rounded-lg border border-border bg-off p-2">
+            <input
+              type="text"
+              value={signer.publicKey}
+              onChange={(e) => updateSigner(index, "publicKey", e.target.value)}
+              placeholder="G..."
+              className="input min-w-0 flex-1 text-[11px] font-mono"
+            />
+            <div className="flex shrink-0 items-center gap-1">
+              <span className="text-[11px] font-medium text-muted">W:</span>
+              <input
+                type="number"
+                value={signer.weight}
+                onChange={(e) => updateSigner(index, "weight", e.target.value)}
+                min="0"
+                max="255"
+                className="input w-12 px-1 text-center text-[11px]"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => removeSigner(index)}
+              className="shrink-0 rounded p-1 text-muted transition-colors hover:bg-white hover:text-red-600"
+              title="Remove signer"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+
+        <div className="space-y-2 rounded-lg border border-dashed border-border bg-off p-2.5">
+          <input
+            type="text"
+            value={newPublicKey}
+            onChange={(e) => {
+              setNewPublicKey(e.target.value);
+              if (keyError) setKeyError(null);
+            }}
+            placeholder="Add signer public key (G...)..."
+            className="input w-full min-w-0 text-[11px] font-mono"
+          />
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-muted">Weight:</span>
+              <input
+                type="number"
+                value={newWeight}
+                onChange={(e) => setNewWeight(parseInt(e.target.value) || 1)}
+                min="1"
+                max="255"
+                className="input w-14 px-1 text-center text-[11px]"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addSigner}
+              className="flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-white transition-opacity hover:opacity-90"
+            >
+              <Plus size={13} /> Add Signer
+            </button>
+          </div>
+        </div>
+
+        {keyError && <p className="text-[11px] font-medium text-red-500">{keyError}</p>}
+      </div>
       <style jsx>{inputStyle}</style>
     </Labeled>
   );

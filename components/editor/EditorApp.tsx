@@ -17,6 +17,7 @@ import { ExportDialog } from "./ExportDialog";
 import { Guide } from "./Guide";
 import { WalletVault } from "./WalletVault";
 import { ScheduleDialog } from "./ScheduleDialog";
+import { ShareDialog } from "./ShareDialog";
 import { useVaultStore } from "@/lib/vault/store";
 import { useAutoSave } from "./useAutoSave";
 
@@ -83,6 +84,7 @@ export function EditorApp() {
   const [showExport, setShowExport] = useState(false);
   const [showVault, setShowVault] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [logs, setLogs] = useState<RunLog[]>([]);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [running, setRunning] = useState(false);
@@ -221,6 +223,7 @@ export function EditorApp() {
           onAI={() => setShowAI((v) => !v)}
           onVault={() => setShowVault(true)}
           onSchedule={() => setShowSchedule(true)}
+          onShare={() => setShowShare(true)}
           running={running}
           aiOpen={showAI}
           saveStatus={saveStatus}
@@ -254,6 +257,7 @@ export function EditorApp() {
       <ExportDialog open={showExport} onClose={() => setShowExport(false)} />
       <WalletVault open={showVault} onClose={() => setShowVault(false)} />
       <ScheduleDialog open={showSchedule} onClose={() => setShowSchedule(false)} />
+      <ShareDialog open={showShare} onClose={() => setShowShare(false)} />
       <Guide hidden={showAI} />
 
       {importError && (

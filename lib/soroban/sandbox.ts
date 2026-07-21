@@ -197,6 +197,10 @@ function describeStep(type: string, data: Record<string, unknown>, net: NetworkC
       return `${data.method ?? "POST"} ${data.url ?? "?"}`;
     case "csv-import":
       return `reading CSV dataset with ${(data.rows as any[])?.length ?? 0} rows`;
+    case "multisig-wallet": {
+      const signers = (data.signers as Array<{ publicKey: string; weight: number }>) || [];
+      return `configuring ${signers.length} signer(s) with thresholds (low: ${data.lowThreshold ?? 1}, med: ${data.mediumThreshold ?? 2}, high: ${data.highThreshold ?? 3})`;
+    }
     default:
       return "ok";
   }
