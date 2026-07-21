@@ -112,6 +112,52 @@ ${signerOps ? signerOps + "\n" : ""}  multisigBuilder.addOperation(Operation.set
   multisigTx.sign(account);
   const res = await horizon.submitTransaction(multisigTx);
   console.log("Multisig configured, tx:", res.hash);`;
+    case "liquidity-pool": {
+      const action = data.action ?? "deposit";
+      const assetA = data.assetA ?? "XLM";
+      const assetB = data.assetB ?? "USDC";
+      if (action === "deposit") {
+        return `  // Deposit liquidity into ${assetA}/${assetB} pool
+  const src = await horizon.loadAccount(account.publicKey());
+  const lpDepositTx = new TransactionBuilder(src, {
+    fee: "100",
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(Operation.liquidityPoolDeposit({
+      liquidityPoolId: ${js(data.poolId || "<derived-pool-id>")},
+      maxAmountA: ${js(String(data.amountA ?? "100"))},
+      maxAmountB: ${js(String(data.amountB ?? "50"))},
+      minPrice: ${js(String(data.minPrice ?? "0.1"))},
+      maxPrice: ${js(String(data.maxPrice ?? "10"))},
+    }))
+    .setTimeout(30)
+    .build();
+  lpDepositTx.sign(account);
+  const res = await horizon.submitTransaction(lpDepositTx);
+  console.log("Liquidity Pool deposit tx:", res.hash);`;
+      } else if (action === "withdraw") {
+        return `  // Withdraw liquidity from ${assetA}/${assetB} pool
+  const src = await horizon.loadAccount(account.publicKey());
+  const lpWithdrawTx = new TransactionBuilder(src, {
+    fee: "100",
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(Operation.liquidityPoolWithdraw({
+      liquidityPoolId: ${js(data.poolId || "<derived-pool-id>")},
+      amount: ${js(String(data.shares ?? "10"))},
+      minAmountA: ${js(String(data.minAmountA ?? "0.01"))},
+      minAmountB: ${js(String(data.minAmountB ?? "0.01"))},
+    }))
+    .setTimeout(30)
+    .build();
+  lpWithdrawTx.sign(account);
+  const res = await horizon.submitTransaction(lpWithdrawTx);
+  console.log("Liquidity Pool withdraw tx:", res.hash);`;
+      } else {
+        return `  // Query Liquidity Pool ${assetA}/${assetB} details
+  console.log("Fetching pool info for ${assetA}/${assetB}...");`;
+      }
+    }
     default:
       return `  // TODO: implement ${type}`;
   }
