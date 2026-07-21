@@ -1,7 +1,8 @@
 import type { Keypair } from "@stellar/stellar-sdk";
-import { executionOrder, type Workflow } from "../workflow-schema";
+import { executionOrder, type Workflow, type WorkflowNode } from "../workflow-schema";
 import { getServerNetwork } from "../stellar/network";
 import { getHandler } from "./handlers";
+import { applyLoopVars, resolveLoopItems } from "./loop";
 import type { RunContext, RunLogEvent } from "./types";
 
 export interface ExecuteCallbacks {
@@ -47,6 +48,15 @@ export async function executeWorkflow(
   const hasIncoming = new Set(wf.edges.map((e) => e.target));
   const reached = new Set(wf.nodes.filter((n) => !hasIncoming.has(n.id)).map((n) => n.id));
 
+  // A Loop / Batch node repeats the single node connected after it; that node
+  // runs inside the loop's own step below, not as a standalone step in `order`.
+  const loopOwnerOf = new Map<string, WorkflowNode>();
+  for (const n of wf.nodes) {
+    if (n.type !== "loop-batch") continue;
+    const bodyEdge = wf.edges.find((e) => e.source === n.id);
+    if (bodyEdge) loopOwnerOf.set(bodyEdge.target, n);
+  }
+
   let failed = false;
 
   for (const node of order) {
@@ -61,6 +71,31 @@ export async function executeWorkflow(
     // Terminal gating: success/error terminals depend on run outcome so far.
     if (node.type === "on-error" && !failed) continue;
     if (node.type === "on-success" && failed) continue;
+
+    // Already executed (repeatedly) by its owning Loop / Batch node above —
+    // just propagate reachability to whatever comes after it.
+    if (loopOwnerOf.has(node.id)) {
+      enableOutgoing(node.id);
+      continue;
+    }
+
+    if (node.type === "loop-batch") {
+      const bodyEdge = wf.edges.find((e) => e.source === node.id);
+      const bodyNode = bodyEdge ? wf.nodes.find((n) => n.id === bodyEdge.target) : undefined;
+      try {
+        await runLoopBatch(node, bodyNode, ctx);
+        enableOutgoing(node.id);
+      } catch (e) {
+        failed = true;
+        ctx.emit({ nodeId: node.id, blockType: node.type, level: "error", message: (e as Error).message ?? "Loop failed." });
+        for (const errNode of order.filter((n) => n.type === "on-error")) {
+          const h = getHandler(errNode.type);
+          if (h) await h(errNode, ctx).catch(() => {});
+        }
+        break;
+      }
+      continue;
+    }
 
     const handler = getHandler(node.type);
     if (!handler) {
@@ -106,4 +141,78 @@ export async function executeWorkflow(
       if (enabled) reached.add(e.target);
     }
   }
+}
+
+/**
+ * Run a Loop / Batch node: repeats `bodyNode` once per resolved item (or
+ * `count` times), substituting {{item}} / {{index}} into its field values.
+ * Failed iterations are logged and counted but don't abort the loop unless
+ * `continueOnError` is off.
+ */
+async function runLoopBatch(loopNode: WorkflowNode, bodyNode: WorkflowNode | undefined, ctx: RunContext) {
+  const items = resolveLoopItems(loopNode.data);
+  const continueOnError = loopNode.data.continueOnError !== false;
+
+  if (!bodyNode) {
+    ctx.emit({
+      nodeId: loopNode.id,
+      blockType: loopNode.type,
+      level: "warn",
+      message: "Loop / Batch has no step connected after it — nothing to repeat.",
+    });
+    ctx.outputs[loopNode.id] = { iterations: 0, succeeded: 0, failed: 0, results: [] };
+    return;
+  }
+
+  const handler = getHandler(bodyNode.type);
+  ctx.emit({
+    nodeId: loopNode.id,
+    blockType: loopNode.type,
+    level: "info",
+    message: `Loop / Batch: ${items.length} iteration(s) of "${bodyNode.type}".`,
+  });
+
+  let succeeded = 0;
+  let failed = 0;
+  const results: Array<{ index: number; item: string; ok: boolean; error?: string }> = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    ctx.emit({
+      nodeId: loopNode.id,
+      blockType: loopNode.type,
+      level: "info",
+      message: `Iteration ${i + 1}/${items.length} — item: ${item}`,
+    });
+
+    const iterationNode: WorkflowNode = { ...bodyNode, data: applyLoopVars(bodyNode.data, { item, index: i }) };
+    try {
+      if (!handler) throw new Error(`No handler for "${bodyNode.type}".`);
+      await handler(iterationNode, ctx);
+      succeeded++;
+      results.push({ index: i, item, ok: true });
+    } catch (e) {
+      failed++;
+      const message = (e as Error).message ?? "Iteration failed.";
+      results.push({ index: i, item, ok: false, error: message });
+      ctx.emit({
+        nodeId: bodyNode.id,
+        blockType: bodyNode.type,
+        level: "error",
+        message: `Iteration ${i + 1} failed: ${message}`,
+      });
+      if (!continueOnError) {
+        ctx.outputs[loopNode.id] = { iterations: items.length, succeeded, failed, results };
+        throw new Error(`Loop stopped at iteration ${i + 1}: ${message}`);
+      }
+    }
+  }
+
+  ctx.outputs[loopNode.id] = { iterations: items.length, succeeded, failed, results };
+  ctx.emit({
+    nodeId: loopNode.id,
+    blockType: loopNode.type,
+    level: failed && !succeeded ? "error" : "success",
+    message: `Loop complete — ${succeeded}/${items.length} succeeded${failed ? `, ${failed} failed` : ""}.`,
+  });
 }

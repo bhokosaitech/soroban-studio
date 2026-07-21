@@ -95,9 +95,19 @@ function summarize(type: string, f: Record<string, unknown>): string {
     }
     case "condition":
       return conditionSummary(f);
+    case "loop-batch":
+      return loopSummary(f);
     default:
       return "";
   }
+}
+
+function loopSummary(f: Record<string, unknown>): string {
+  if (f.mode === "list") {
+    const n = Array.isArray(f.items) ? f.items.filter((v) => String(v).trim()).length : 0;
+    return `${n} item${n === 1 ? "" : "s"}`;
+  }
+  return `× ${f.count ?? 0}`;
 }
 
 const OP_SHORT: Record<string, string> = { gt: ">", gte: "≥", lt: "<", lte: "≤", eq: "=", neq: "≠" };

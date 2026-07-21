@@ -1,5 +1,5 @@
 import { getBlock } from "@/lib/blocks/catalog";
-import { executionOrder, type Workflow } from "@/lib/workflow";
+import { executionOrder, resolveLoopItems, type Workflow } from "@/lib/workflow";
 import { getNetwork, type NetworkConfig } from "@/lib/soroban/config";
 
 /**
@@ -84,6 +84,21 @@ console.log("Payment tx:", res.hash);`;
       return `  // Invoke Soroban contract ${data.contractId ?? "<contract>"}
   // Use rpc.Server + contract.call("${data.method ?? "method"}", ...args)
   console.log("invoke ${data.method ?? "method"} on", ${js(data.contractId)});`;
+    case "loop-batch": {
+      if (data.mode === "list") {
+        const items = resolveLoopItems(data);
+        return `  // Loop / Batch — repeat the next step for each item
+  const items = ${js(items)};
+  for (const [index, item] of items.entries()) {
+    // TODO: run the next block here, using \`item\` / \`index\`
+  }`;
+      }
+      return `  // Loop / Batch — repeat the next step
+  const count = ${js(Number(data.count) || 0)};
+  for (let index = 0; index < count; index++) {
+    // TODO: run the next block here, using \`index\`
+  }`;
+    }
     case "multisig-wallet": {
       const signers = (data.signers as Array<{ publicKey: string; weight: number }>) || [];
       const validSigners = signers.filter((s) => s.publicKey && s.publicKey.trim().length > 0);
