@@ -90,6 +90,47 @@ export function Inspector() {
             </div>
           );
         })()}
+        {def.type === "liquidity-pool" && (() => {
+          const action = String(fields.action ?? "deposit");
+          const assetA = String(fields.assetA ?? "XLM");
+          const assetB = String(fields.assetB ?? "USDC");
+          const amountA = Number(fields.amountA) || 0;
+          const amountB = Number(fields.amountB) || 0;
+          const shares = Number(fields.shares) || 0;
+
+          const estimatedLp =
+            action === "deposit" && amountA > 0 && amountB > 0
+              ? Math.sqrt(amountA * amountB).toFixed(4)
+              : null;
+
+          return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] leading-relaxed text-amber-900 space-y-1">
+              <div className="font-semibold text-amber-950">
+                Liquidity Pool: {assetA}/{assetB} ({action.toUpperCase()})
+              </div>
+              {action === "deposit" && (
+                <div>
+                  • Validates wallet balances &amp; trustlines for {assetA} and {assetB}.
+                  {estimatedLp && (
+                    <div className="mt-1 font-medium text-emerald-700">
+                      ✨ Estimated LP Tokens: ~{estimatedLp} LP
+                    </div>
+                  )}
+                </div>
+              )}
+              {action === "withdraw" && (
+                <div>
+                  • Withdraws assets proportional to {shares > 0 ? `${shares} shares` : "specified LP tokens"}.
+                </div>
+              )}
+              {action === "info" && (
+                <div>
+                  • Returns active liquidity, total LP shares, and reserve balances for the pool.
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {def.fields
           .filter((field) => {
             if (!field.showIf) return true;

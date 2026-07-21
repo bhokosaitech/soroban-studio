@@ -24,6 +24,8 @@ export function heuristicWorkflow(prompt: string): Workflow {
   if (p.includes("invoice") || p.includes("bill")) chain.push("create-invoice");
   if (p.includes("trustline") || p.includes("usdc") || p.includes("token"))
     chain.push("establish-trustline");
+  if (p.includes("pool") || p.includes("liquidity") || p.includes("amm") || p.includes("lp"))
+    chain.push("liquidity-pool");
   if (p.includes("swap") || p.includes("exchange")) chain.push("swap-asset");
   if (p.includes("private") || p.includes("shielded") || p.includes("confidential"))
     chain.push("confidential-transfer");

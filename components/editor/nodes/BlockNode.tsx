@@ -91,6 +91,13 @@ function summarize(type: string, f: Record<string, unknown>): string {
       const high = f.highThreshold ?? 3;
       return `${signers.length} signer(s) · L:${low} M:${med} H:${high}`;
     }
+    case "liquidity-pool": {
+      const action = String(f.action ?? "deposit");
+      const pair = `${f.assetA ?? "XLM"}/${f.assetB ?? "USDC"}`;
+      if (action === "deposit") return f.amountA ? `Deposit ${f.amountA} ${f.assetA ?? "XLM"}` : `Deposit ${pair}`;
+      if (action === "withdraw") return f.shares ? `Withdraw ${f.shares} shares` : `Withdraw ${pair}`;
+      return `Pool Info ${pair}`;
+    }
     case "condition":
       return conditionSummary(f);
     default:
