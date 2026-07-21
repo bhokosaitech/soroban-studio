@@ -403,7 +403,7 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
         label: "Liquidity Pool ID (optional)",
         type: "text",
         placeholder: "Auto-derived from pair if empty",
-        help: "Custom 64-char Pool ID or derived automatically from Asset A & B pair.",
+        help: "Leave blank to auto-derive the standard Constant Product pool ID from Asset A & Asset B. Supply a 64-char hex ID only if you need to target a specific pool.",
       },
     ],
   },

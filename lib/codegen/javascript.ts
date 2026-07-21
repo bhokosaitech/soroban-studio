@@ -117,46 +117,54 @@ ${signerOps ? signerOps + "\n" : ""}  multisigBuilder.addOperation(Operation.set
       const action = data.action ?? "deposit";
       const assetA = data.assetA ?? "XLM";
       const assetB = data.assetB ?? "USDC";
+      // Derive the explorer base URL at code-generation time so the emitted
+      // script logs the correct network's Stellar Expert link.
+      const explorerBase = net.explorerTx("__HASH__").replace("__HASH__", "");
       if (action === "deposit") {
-        return `  // Deposit liquidity into ${assetA}/${assetB} pool
-  const src = await horizon.loadAccount(account.publicKey());
-  const lpDepositTx = new TransactionBuilder(src, {
-    fee: "100",
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(Operation.liquidityPoolDeposit({
-      liquidityPoolId: ${js(data.poolId || "<derived-pool-id>")},
-      maxAmountA: ${js(String(data.amountA ?? "100"))},
-      maxAmountB: ${js(String(data.amountB ?? "50"))},
-      minPrice: ${js(String(data.minPrice ?? "0.1"))},
-      maxPrice: ${js(String(data.maxPrice ?? "10"))},
-    }))
-    .setTimeout(30)
-    .build();
-  lpDepositTx.sign(account);
-  const res = await horizon.submitTransaction(lpDepositTx);
-  console.log("Liquidity Pool deposit tx:", res.hash);`;
+        return (
+          `  // Deposit liquidity into ${assetA}/${assetB} pool\n` +
+          `  const src = await horizon.loadAccount(account.publicKey());\n` +
+          `  const lpDepositTx = new TransactionBuilder(src, {\n` +
+          `    fee: "100",\n` +
+          `    networkPassphrase: NETWORK_PASSPHRASE,\n` +
+          `  })\n` +
+          `    .addOperation(Operation.liquidityPoolDeposit({\n` +
+          `      liquidityPoolId: ${js(data.poolId || "<derived-pool-id>")},\n` +
+          `      maxAmountA: ${js(String(data.amountA ?? "100"))},\n` +
+          `      maxAmountB: ${js(String(data.amountB ?? "50"))},\n` +
+          `      minPrice: ${js(String(data.minPrice ?? "0.1"))},\n` +
+          `      maxPrice: ${js(String(data.maxPrice ?? "10"))},\n` +
+          `    }))\n` +
+          `    .setTimeout(30)\n` +
+          `    .build();\n` +
+          `  lpDepositTx.sign(account);\n` +
+          `  const res = await horizon.submitTransaction(lpDepositTx);\n` +
+          `  console.log("Liquidity Pool deposit tx:", res.hash);\n` +
+          `  console.log("Explorer:", \`${explorerBase}\${res.hash}\`);`
+        );
       } else if (action === "withdraw") {
-        return `  // Withdraw liquidity from ${assetA}/${assetB} pool
-  const src = await horizon.loadAccount(account.publicKey());
-  const lpWithdrawTx = new TransactionBuilder(src, {
-    fee: "100",
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(Operation.liquidityPoolWithdraw({
-      liquidityPoolId: ${js(data.poolId || "<derived-pool-id>")},
-      amount: ${js(String(data.shares ?? "10"))},
-      minAmountA: ${js(String(data.minAmountA ?? "0.01"))},
-      minAmountB: ${js(String(data.minAmountB ?? "0.01"))},
-    }))
-    .setTimeout(30)
-    .build();
-  lpWithdrawTx.sign(account);
-  const res = await horizon.submitTransaction(lpWithdrawTx);
-  console.log("Liquidity Pool withdraw tx:", res.hash);`;
+        return (
+          `  // Withdraw liquidity from ${assetA}/${assetB} pool\n` +
+          `  const src = await horizon.loadAccount(account.publicKey());\n` +
+          `  const lpWithdrawTx = new TransactionBuilder(src, {\n` +
+          `    fee: "100",\n` +
+          `    networkPassphrase: NETWORK_PASSPHRASE,\n` +
+          `  })\n` +
+          `    .addOperation(Operation.liquidityPoolWithdraw({\n` +
+          `      liquidityPoolId: ${js(data.poolId || "<derived-pool-id>")},\n` +
+          `      amount: ${js(String(data.shares ?? "10"))},\n` +
+          `      minAmountA: ${js(String(data.minAmountA ?? "0.01"))},\n` +
+          `      minAmountB: ${js(String(data.minAmountB ?? "0.01"))},\n` +
+          `    }))\n` +
+          `    .setTimeout(30)\n` +
+          `    .build();\n` +
+          `  lpWithdrawTx.sign(account);\n` +
+          `  const res = await horizon.submitTransaction(lpWithdrawTx);\n` +
+          `  console.log("Liquidity Pool withdraw tx:", res.hash);\n` +
+          `  console.log("Explorer:", \`${explorerBase}\${res.hash}\`);`
+        );
       } else {
-        return `  // Query Liquidity Pool ${assetA}/${assetB} details
-  console.log("Fetching pool info for ${assetA}/${assetB}...");`;
+        return `  // Query Liquidity Pool ${assetA}/${assetB} details\n  console.log("Fetching pool info for ${assetA}/${assetB}...");`;
       }
     }
     case "swap-asset": {

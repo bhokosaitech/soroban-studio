@@ -542,21 +542,23 @@ const HANDLERS: Record<string, BlockHandler> = {
         poolId,
       });
 
+      const depositExplorerUrl = ctx.net.explorerTx(res.hash);
       ctx.outputs[node.id] = {
         txHash: res.hash,
         poolId: res.poolId,
+        explorerUrl: depositExplorerUrl,
         estimatedLpTokens: res.estimatedLpTokens,
         depositedA: amountA,
         depositedB: amountB,
         status: "succeeded",
       };
-      ctx.outputs._last = { txHash: res.hash, status: "succeeded" };
+      ctx.outputs._last = { txHash: res.hash, poolId: res.poolId, explorerUrl: depositExplorerUrl, status: "succeeded" };
 
       ctx.emit({
         nodeId: node.id,
         blockType: node.type,
         level: "success",
-        message: `Deposited into pool ${res.poolId.slice(0, 8)}… ~${res.estimatedLpTokens} LP tokens received`,
+        message: `Deposited into pool ${res.poolId.slice(0, 8)}… ~${res.estimatedLpTokens} LP tokens received — ${depositExplorerUrl}`,
         txHash: res.hash,
       });
     } else if (action === "withdraw") {
@@ -582,19 +584,21 @@ const HANDLERS: Record<string, BlockHandler> = {
         poolId,
       });
 
+      const withdrawExplorerUrl = ctx.net.explorerTx(res.hash);
       ctx.outputs[node.id] = {
         txHash: res.hash,
         poolId: res.poolId,
+        explorerUrl: withdrawExplorerUrl,
         sharesBurned: res.sharesBurned,
         status: "succeeded",
       };
-      ctx.outputs._last = { txHash: res.hash, status: "succeeded" };
+      ctx.outputs._last = { txHash: res.hash, poolId: res.poolId, explorerUrl: withdrawExplorerUrl, status: "succeeded" };
 
       ctx.emit({
         nodeId: node.id,
         blockType: node.type,
         level: "success",
-        message: `Withdrew ${shares} LP shares from pool ${res.poolId.slice(0, 8)}…`,
+        message: `Withdrew ${shares} LP shares from pool ${res.poolId.slice(0, 8)}… — ${withdrawExplorerUrl}`,
         txHash: res.hash,
       });
     } else {
