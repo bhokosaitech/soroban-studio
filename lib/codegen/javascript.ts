@@ -49,42 +49,42 @@ main().catch((err) => {
 function snippet(type: string, data: Record<string, unknown>, net: NetworkConfig): string {
   switch (type) {
     case "create-wallet":
-      return `  const account = Keypair.random();
+      return `const account = Keypair.random();
   console.log("Public key:", account.publicKey());${
     data.fund && net.friendbotUrl
       ? `\n  await fetch(\`${net.friendbotUrl}?addr=\${account.publicKey()}\`);`
       : net.friendbotUrl
         ? ""
-        : `\n  // Fund this account manually on ${net.label} — no Friendbot available.`
+        : "\n  // Fund this account manually on ${net.label} — no Friendbot available."
   }`;
     case "send-payment":
-      return `  // send ${data.amount ?? "?"} ${data.asset ?? "XLM"} to ${data.destination ?? "<dest>"}
-  const src = await horizon.loadAccount(account.publicKey());
-  const paymentTx = new TransactionBuilder(src, {
-    fee: "100",
-    networkPassphrase: NETWORK_PASSPHRASE,
-  })
-    .addOperation(Operation.payment({
-      destination: ${js(data.destination)},
-      asset: ${data.asset && data.asset !== "XLM" ? `new Asset(${js(data.asset)}, ISSUER)` : "Asset.native()"},
-      amount: ${js(String(data.amount ?? "0"))},
-    }))
-    .setTimeout(30)
-    .build();
-  paymentTx.sign(account);
-  const res = await horizon.submitTransaction(paymentTx);
-  console.log("Payment tx:", res.hash);`;
+      return ` // send ${data.amount ?? "?"} ${data.asset ?? "XLM"} to ${data.destination ?? "<dest>"}
+const src = await horizon.loadAccount(account.publicKey());
+const paymentTx = new TransactionBuilder(src, {
+  fee: "100",
+  networkPassphrase: NETWORK_PASSPHRASE,
+})
+  .addOperation(Operation.payment({
+    destination: ${js(data.destination)},
+    asset: ${data.asset && data.asset !== "XLM" ? `new Asset(${js(data.asset)}, ISSUER)` : "Asset.native()"},
+    amount: ${js(String(data.amount ?? "0"))},
+  }))
+  .setTimeout(30)
+  .build();
+paymentTx.sign(account);
+const res = await horizon.submitTransaction(paymentTx);
+console.log("Payment tx:", res.hash);`;
     case "trigger-webhook":
-      return `  await fetch(${js(data.url)}, {
-    method: ${js(data.method ?? "POST")},
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ workflow: ${js(type)} }),
-  });`;
+      return `await fetch(${js(data.url)}, {
+  method: ${js(data.method ?? "POST")},
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ workflow: ${js(type)} }),
+});`;
     case "invoke-contract":
       return `  // Invoke Soroban contract ${data.contractId ?? "<contract>"}
   // Use rpc.Server + contract.call("${data.method ?? "method"}", ...args)
   console.log("invoke ${data.method ?? "method"} on", ${js(data.contractId)});`;
-    case "multisig-wallet":
+    case "multisig-wallet": {
       const signers = (data.signers as Array<{ publicKey: string; weight: number }>) || [];
       const validSigners = signers.filter((s) => s.publicKey && s.publicKey.trim().length > 0);
       const signerOps = validSigners
@@ -156,10 +156,156 @@ ${signerOps ? signerOps + "\n" : ""}  multisigBuilder.addOperation(Operation.set
       } else {
         return `  // Query Liquidity Pool ${assetA}/${assetB} details
   console.log("Fetching pool info for ${assetA}/${assetB}...");`;
+    }
+    case "swap-asset": {
+      const mode = typeof data.mode === "string" && data.mode === "exact-out" ? "exact-out" : "exact-in";
+      const sendAsset = typeof data.sendAsset === "string" ? data.sendAsset : "XLM";
+      const destAsset = typeof data.destAsset === "string" ? data.destAsset : "USDC";
+      const amount = typeof data.amount === "string" || typeof data.amount === "number"
+        ? String(data.amount).trim() || "0"
+        : "0";
+      const slippageBps = typeof data.slippageBps === "string" || typeof data.slippageBps === "number"
+        ? Number(data.slippageBps)
+        : 100;
+      const slippagePct = Number.isFinite(slippageBps) ? slippageBps / 100 : 1;
+
+      const sendAssetExpr = sendAsset === "XLM"
+        ? "Asset.native()"
+        : `new Asset(${js(sendAsset)}, SEND_ASSET_ISSUER)`;
+      const destAssetExpr = destAsset === "XLM"
+        ? "Asset.native()"
+        : `new Asset(${js(destAsset)}, DEST_ASSET_ISSUER)`;
+
+      if (mode === "exact-in") {
+        // pathPaymentStrictSend: spend exactly `sendAmount`, receive at least `destMin`
+        return `  // Swap ${amount} ${sendAsset} → ${destAsset} (exact-in, slippage ${slippagePct}%)
+  // Replace SEND_ASSET_ISSUER / DEST_ASSET_ISSUER with actual issuers from stellar.expert
+  const SEND_ASSET_ISSUER = ""; // set issuer if ${sendAsset} is not native
+  const DEST_ASSET_ISSUER = ""; // set issuer if ${destAsset} is not native
+
+  // 1. Find a liquidity path via Horizon
+  const pathResp = await horizon
+    .strictSendPaths(
+      ${sendAssetExpr},
+      ${js(amount)},
+      [${destAssetExpr}]
+    )
+    .call();
+  const bestPath = pathResp.records[0];
+  if (!bestPath) throw new Error("No liquidity path found for ${sendAsset} → ${destAsset}");
+
+  const expectedReceive = Number(bestPath.destination_amount);
+  const destMin = (expectedReceive * (1 - ${slippagePct} / 100)).toFixed(7);
+  console.log("Expected receive:", expectedReceive, "${destAsset}", "| min after slippage:", destMin);
+
+  // 2. Ensure trustline exists for destination asset (skip if native)
+  ${destAsset !== "XLM" ? `const swapSrc = await horizon.loadAccount(account.publicKey());
+  const hasTrustline = swapSrc.balances.some(
+    (b) => b.asset_type !== "native" && (b as { asset_code?: string }).asset_code === ${js(destAsset)}
+  );
+  if (!hasTrustline) {
+    const tlTx = new TransactionBuilder(swapSrc, {
+      fee: "100",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(Operation.changeTrust({ asset: ${destAssetExpr} }))
+      .setTimeout(30)
+      .build();
+    tlTx.sign(account);
+    await horizon.submitTransaction(tlTx);
+    console.log("Trustline for ${destAsset} established.");
+  }` : "// XLM is native — no trustline required."}
+
+  // 3. Build and submit pathPaymentStrictSend
+  const swapAccount = await horizon.loadAccount(account.publicKey());
+  const swapTx = new TransactionBuilder(swapAccount, {
+    fee: "100",
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      Operation.pathPaymentStrictSend({
+        sendAsset: ${sendAssetExpr},
+        sendAmount: ${js(amount)},
+        destination: account.publicKey(), // swap to self; change to recipient if needed
+        destAsset: ${destAssetExpr},
+        destMin,
+        path: (bestPath.path || []).map((p) =>
+          p.asset_type === "native" ? Asset.native() : new Asset(p.asset_code!, p.asset_issuer!)
+        ),
+      })
+    )
+    .setTimeout(30)
+    .build();
+  swapTx.sign(account);
+  const swapRes = await horizon.submitTransaction(swapTx);
+  console.log("Swap confirmed — tx hash:", swapRes.hash);`;
+      } else {
+        // pathPaymentStrictReceive: receive exactly `destAmount`, spend at most `sendMax`
+        return `  // Swap ${sendAsset} → ${amount} ${destAsset} (exact-out, slippage ${slippagePct}%)
+  // Replace SEND_ASSET_ISSUER / DEST_ASSET_ISSUER with actual issuers from stellar.expert
+  const SEND_ASSET_ISSUER = ""; // set issuer if ${sendAsset} is not native
+  const DEST_ASSET_ISSUER = ""; // set issuer if ${destAsset} is not native
+
+  // 1. Find a liquidity path via Horizon
+  const pathResp = await horizon
+    .strictReceivePaths(
+      [${sendAssetExpr}],
+      ${destAssetExpr},
+      ${js(amount)}
+    )
+    .call();
+  const bestPath = pathResp.records[0];
+  if (!bestPath) throw new Error("No liquidity path found for ${sendAsset} → ${destAsset}");
+
+  const expectedSend = Number(bestPath.source_amount);
+  const sendMax = (expectedSend * (1 + ${slippagePct} / 100)).toFixed(7);
+  console.log("Expected to spend:", expectedSend, "${sendAsset}", "| max with slippage:", sendMax);
+
+  // 2. Ensure trustline exists for destination asset (skip if native)
+  ${destAsset !== "XLM" ? `const swapSrc = await horizon.loadAccount(account.publicKey());
+  const hasTrustline = swapSrc.balances.some(
+    (b) => b.asset_type !== "native" && (b as { asset_code?: string }).asset_code === ${js(destAsset)}
+  );
+  if (!hasTrustline) {
+    const tlTx = new TransactionBuilder(swapSrc, {
+      fee: "100",
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(Operation.changeTrust({ asset: ${destAssetExpr} }))
+      .setTimeout(30)
+      .build();
+    tlTx.sign(account);
+    await horizon.submitTransaction(tlTx);
+    console.log("Trustline for ${destAsset} established.");
+  }` : "// XLM is native — no trustline required."}
+
+  // 3. Build and submit pathPaymentStrictReceive
+  const swapAccount = await horizon.loadAccount(account.publicKey());
+  const swapTx = new TransactionBuilder(swapAccount, {
+    fee: "100",
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      Operation.pathPaymentStrictReceive({
+        sendAsset: ${sendAssetExpr},
+        sendMax,
+        destination: account.publicKey(), // swap to self; change to recipient if needed
+        destAsset: ${destAssetExpr},
+        destAmount: ${js(amount)},
+        path: (bestPath.path || []).map((p) =>
+          p.asset_type === "native" ? Asset.native() : new Asset(p.asset_code!, p.asset_issuer!)
+        ),
+      })
+    )
+    .setTimeout(30)
+    .build();
+  swapTx.sign(account);
+  const swapRes = await horizon.submitTransaction(swapTx);
+  console.log("Swap confirmed — tx hash:", swapRes.hash);`;
       }
     }
     default:
-      return `  // TODO: implement ${type}`;
+      return ` // TODO: implement ${type}`;
   }
 }
 
