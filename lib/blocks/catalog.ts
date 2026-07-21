@@ -267,14 +267,44 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
     type: "swap-asset",
     label: "Swap Asset",
     category: "asset",
-    description: "Path-payment swap between two assets on the Stellar DEX.",
+    description:
+      "Swap one Stellar asset for another via the DEX/AMM (path payment).",
     icon: "ArrowLeftRight",
     network: true,
     handles: { target: true, source: true },
     fields: [
       { key: "sendAsset", label: "From asset", type: "asset", default: "XLM" },
       { key: "destAsset", label: "To asset", type: "asset", default: "USDC" },
-      { key: "amount", label: "Amount", type: "number", required: true },
+      {
+        key: "mode",
+        label: "Swap mode",
+        type: "select",
+        default: "exact-in",
+        options: [
+          { label: "Send exact amount", value: "exact-in" },
+          { label: "Receive exact amount", value: "exact-out" },
+        ],
+        help: "exact-in: spend exactly this much. exact-out: receive exactly this much.",
+      },
+      { key: "amount", label: "Amount", type: "number", required: true, placeholder: "10" },
+      {
+        key: "slippageBps",
+        label: "Slippage (basis points)",
+        type: "number",
+        default: 100,
+        help: "100 = 1%, 500 = 5%. Higher accepts more price movement.",
+      },
+      {
+        key: "sharpness",
+        label: "Quote sharpness",
+        type: "select",
+        default: "fast",
+        help: "Trade-off between speed and best execution rate.",
+        options: [
+          { label: "Fast (best effort)", value: "fast" },
+          { label: "Standard (small wait)", value: "standard" },
+        ],
+      },
     ],
   },
 
@@ -418,16 +448,51 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
     fields: [{ key: "seconds", label: "Seconds", type: "number", default: 5 }],
   },
   {
-    type: "csv-import",
-    label: "CSV Import",
+    type: "loop-batch",
+    label: "Loop / Batch",
     category: "automation",
-    description: "Upload a CSV file, map columns to fields, and execute downstream steps for each row.",
-    icon: "FileSpreadsheet",
+    description:
+      "Repeat the very next connected block multiple times — by a fixed count or once per item in a list. Use {{item}} / {{index}} in that block's fields to reference the current iteration. Loops can't be nested.",
+    icon: "Repeat",
     handles: { target: true, source: true },
-    fields: [],
+    fields: [
+      {
+        key: "mode",
+        label: "Repeat by",
+        type: "select",
+        default: "count",
+        options: [
+          { label: "Fixed count", value: "count" },
+          { label: "List of inputs", value: "list" },
+        ],
+      },
+      {
+        key: "count",
+        label: "Repeat count",
+        type: "number",
+        default: 3,
+        showIf: { field: "mode", in: ["count"] },
+      },
+      {
+        key: "items",
+        label: "Input list",
+        type: "list",
+        default: [],
+        placeholder: "GABC…",
+        help: "One value per row. Available in the next block as {{item}}.",
+        showIf: { field: "mode", in: ["list"] },
+      },
+      {
+        key: "continueOnError",
+        label: "Continue on failed iteration",
+        type: "boolean",
+        default: true,
+        help: "Keep looping if one iteration fails instead of stopping the whole workflow.",
+      },
+    ],
   },
 
-  // ------------------------------------------------------------------ output
+  // ---------------------------------------------------------------- output
   {
     type: "on-success",
     label: "On Success",

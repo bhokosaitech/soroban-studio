@@ -84,6 +84,8 @@ function summarize(type: string, f: Record<string, unknown>): string {
       return typeof f.url === "string" ? f.url.replace(/^https?:\/\//, "") : "";
     case "create-invoice":
       return f.amount ? `${f.amount} ${f.asset ?? ""}` : "";
+    case "swap-asset":
+      return f.amount ? `${f.amount} ${String(f.sendAsset ?? "XLM")} → ${String(f.destAsset ?? "USDC")}` : "";
     case "multisig-wallet": {
       const signers = (f.signers as Array<unknown>) || [];
       const low = f.lowThreshold ?? 1;
@@ -93,11 +95,19 @@ function summarize(type: string, f: Record<string, unknown>): string {
     }
     case "condition":
       return conditionSummary(f);
-    case "csv-import":
-      return f.csvName ? `${String(f.csvName)} (${(f.rows as any[])?.length ?? 0} rows)` : "No CSV uploaded";
+    case "loop-batch":
+      return loopSummary(f);
     default:
       return "";
   }
+}
+
+function loopSummary(f: Record<string, unknown>): string {
+  if (f.mode === "list") {
+    const n = Array.isArray(f.items) ? f.items.filter((v) => String(v).trim()).length : 0;
+    return `${n} item${n === 1 ? "" : "s"}`;
+  }
+  return `× ${f.count ?? 0}`;
 }
 
 const OP_SHORT: Record<string, string> = { gt: ">", gte: "≥", lt: "<", lte: "≤", eq: "=", neq: "≠" };

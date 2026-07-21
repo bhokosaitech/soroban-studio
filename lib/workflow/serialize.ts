@@ -203,6 +203,9 @@ export function validateWorkflow(wf: Workflow): string[] {
         problems.push(`"${def.label}" is missing required field "${f.label}".`);
       }
     }
+    if (n.type === "loop-batch" && !wf.edges.some((e) => e.source === n.id)) {
+      problems.push(`"${def.label}" needs a block connected after it to repeat.`);
+    }
   }
 
   for (const e of wf.edges) {

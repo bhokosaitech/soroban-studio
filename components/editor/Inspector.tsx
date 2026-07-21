@@ -6,8 +6,8 @@ import type { BlockField } from "@/lib/blocks/types";
 import { ASSET_OPTIONS } from "@/lib/blocks/assets";
 import { useEditorStore } from "@/lib/store/editor";
 import { useVaultStore } from "@/lib/vault/store";
-import { Trash2, Download, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { Trash2, Plus, X, RefreshCw, TrendingDown, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useState, useCallback, useRef } from "react";
 
 /**
  * Right-hand inspector — edits the selected node's fields (from the catalog)
@@ -95,6 +95,9 @@ export function Inspector() {
             </div>
           );
         })()}
+        {def.type === "swap-asset" && (
+          <SwapQuotePanel fields={fields} network={meta.network} />
+        )}
         {def.fields
           .filter((field) => {
             if (!field.showIf) return true;
@@ -136,6 +139,10 @@ function Field({
 
   if (field.type === "wallet") {
     return <WalletField field={field} value={value} onChange={onChange} />;
+  }
+
+  if (field.type === "list") {
+    return <ListField field={field} value={value} onChange={onChange} />;
   }
 
   if (field.type === "signers") {
@@ -201,6 +208,68 @@ function Field({
         }
         className="input"
       />
+    </Labeled>
+  );
+}
+
+/** Dynamic add/remove rows for `list`-type fields (one input per item). */
+function ListField({
+  field,
+  value,
+  onChange,
+}: {
+  field: BlockField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const items = Array.isArray(value) ? (value as string[]) : [];
+
+  const label = (
+    <span>
+      {field.label}
+      {field.required && <span className="text-accent"> *</span>}
+    </span>
+  );
+
+  function setItem(i: number, v: string) {
+    const next = [...items];
+    next[i] = v;
+    onChange(next);
+  }
+
+  function removeItem(i: number) {
+    onChange(items.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <Labeled label={label} help={field.help}>
+      <div className="space-y-1.5">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <input
+              value={item}
+              placeholder={field.placeholder}
+              onChange={(e) => setItem(i, e.target.value)}
+              className="input"
+            />
+            <button
+              type="button"
+              onClick={() => removeItem(i)}
+              className="shrink-0 rounded-md p-1.5 text-muted transition-colors hover:bg-off hover:text-ink"
+              title="Remove"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChange([...items, ""])}
+          className="flex items-center gap-1 text-[12px] font-medium text-accent hover:underline"
+        >
+          <Plus size={13} /> Add value
+        </button>
+      </div>
     </Labeled>
   );
 }
@@ -719,3 +788,197 @@ const inputStyle = `
   }
   .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
 `;
+
+// ---------------------------------------------------------------------------
+// Swap Quote Panel — live preview for the swap-asset block
+// ---------------------------------------------------------------------------
+
+interface SwapQuoteResult {
+  expectedReceive: string;
+  sendAmountMin: string;
+  route: string;
+  slippageBps: number;
+  priceImpactPct?: number;
+}
+
+/**
+ * Renders a "Preview Quote" button that fetches a real-time Horizon path-finding
+ * quote and displays: estimated receive, minimum received after slippage, route,
+ * price impact, estimated fee, and a liquidity warning banner.
+ */
+function SwapQuotePanel({
+  fields,
+  network,
+}: {
+  fields: Record<string, unknown>;
+  network?: "testnet" | "mainnet";
+}) {
+  const [loading, setLoading] = useState(false);
+  const [quote, setQuote] = useState<SwapQuoteResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const sendAsset = String(fields.sendAsset ?? "XLM");
+  const destAsset = String(fields.destAsset ?? "USDC");
+  const amount = Number(fields.amount ?? 0);
+  const slippageBps = Number(fields.slippageBps ?? 100);
+  const mode = String(fields.mode ?? "exact-in");
+
+  // Validation before fetching.
+  const validationError =
+    sendAsset.toUpperCase() === destAsset.toUpperCase()
+      ? "Input and output assets must be different."
+      : !amount || amount <= 0
+        ? "Enter an amount greater than zero."
+        : null;
+
+  const fetchQuote = useCallback(async () => {
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    setLoading(true);
+    setError(null);
+    setQuote(null);
+
+    try {
+      const qs = new URLSearchParams({
+        sendAsset,
+        destAsset,
+        amount: String(amount),
+        mode,
+        slippageBps: String(slippageBps),
+        network: network ?? "testnet",
+      });
+      const res = await fetch(`/api/swap-quote?${qs}`, {
+        signal: abortRef.current.signal,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(body.error ?? res.statusText);
+      }
+      const data: SwapQuoteResult = await res.json();
+      setQuote(data);
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        setError((err as Error).message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [sendAsset, destAsset, amount, mode, slippageBps, network, validationError]);
+
+  const slippagePct = slippageBps / 100;
+  const priceImpact = quote?.priceImpactPct ?? null;
+  const highImpact = priceImpact !== null && priceImpact > 2;
+  const noLiquidity = error?.toLowerCase().includes("no liquidity") ||
+    error?.toLowerCase().includes("path") ||
+    error?.toLowerCase().includes("too few");
+
+  return (
+    <div className="space-y-2 rounded-xl border border-border bg-off p-3">
+      {/* Validation banner */}
+      {validationError && (
+        <div className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-700">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <span>{validationError}</span>
+        </div>
+      )}
+
+      {/* No-liquidity warning */}
+      {noLiquidity && (
+        <div className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] text-red-700">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <span>No liquidity path found. Try a smaller amount or adjust slippage.</span>
+        </div>
+      )}
+
+      {/* Preview button */}
+      <button
+        id="swap-preview-quote-btn"
+        onClick={fetchQuote}
+        disabled={loading || !!validationError}
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[12px] font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+        {loading ? "Fetching quote…" : "Preview Quote"}
+      </button>
+
+      {/* Generic error */}
+      {error && !noLiquidity && (
+        <p className="text-[11px] text-red-600">{error}</p>
+      )}
+
+      {/* Quote result */}
+      {quote && !loading && (
+        <div className="space-y-1.5 pt-1">
+          {/* Estimated receive */}
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted">Est. receive</span>
+            <span className="text-[12px] font-semibold text-ink">
+              {quote.expectedReceive} {destAsset}
+            </span>
+          </div>
+
+          {/* Minimum received */}
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted">Min received ({slippagePct}% slip)</span>
+            <span className="text-[12px] text-ink">
+              {quote.sendAmountMin} {mode === "exact-in" ? destAsset : sendAsset}
+            </span>
+          </div>
+
+          {/* Route */}
+          {quote.route && (
+            <div className="flex items-start justify-between gap-1">
+              <span className="text-[11px] text-muted shrink-0">Route</span>
+              <span className="text-right text-[11px] text-ink break-all">{quote.route}</span>
+            </div>
+          )}
+
+          {/* Estimated network fee */}
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted">Est. network fee</span>
+            <span className="text-[12px] text-ink">~0.00001 XLM</span>
+          </div>
+
+          {/* Price impact */}
+          {priceImpact !== null && (
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1 text-[11px] text-muted">
+                <TrendingDown size={11} />
+                Price impact
+              </span>
+              <span
+                className={`text-[12px] font-semibold ${
+                  highImpact ? "text-red-600" : "text-green-600"
+                }`}
+              >
+                {priceImpact.toFixed(2)}%
+              </span>
+            </div>
+          )}
+
+          {/* High impact warning */}
+          {highImpact && (
+            <div className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] text-red-700">
+              <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+              <span>High price impact ({priceImpact?.toFixed(2)}%). Consider splitting the trade.</span>
+            </div>
+          )}
+
+          {/* Success badge */}
+          {!highImpact && (
+            <div className="flex items-center gap-1.5 text-[11px] text-green-600">
+              <CheckCircle2 size={12} />
+              <span>Liquidity path available</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+

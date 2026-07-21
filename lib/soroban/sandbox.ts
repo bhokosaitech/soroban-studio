@@ -1,5 +1,5 @@
 import { getBlock } from "@/lib/blocks/catalog";
-import { executionOrder, type Workflow, getDownstreamNodeIds } from "@/lib/workflow";
+import { applyLoopVars, executionOrder, resolveLoopItems, type Workflow, type WorkflowNode } from "@/lib/workflow";
 import { getNetwork, type NetworkConfig } from "./config";
 
 /**
@@ -53,17 +53,27 @@ export async function runSandbox(
     at: Date.now(),
   });
 
-  const csvNode = wf.nodes.find((n) => n.type === "csv-import");
-  const downstreamIds = csvNode ? getDownstreamNodeIds(wf, csvNode.id) : new Set<string>();
+  // A Loop / Batch node repeats the single node connected after it; that node
+  // is simulated inside the loop below, not as a standalone step here.
+  const loopOwnerOf = new Map<string, WorkflowNode>();
+  for (const n of wf.nodes) {
+    if (n.type !== "loop-batch") continue;
+    const bodyEdge = wf.edges.find((e) => e.source === n.id);
+    if (bodyEdge) loopOwnerOf.set(bodyEdge.target, n);
+  }
 
   for (const node of executionOrder(wf)) {
-    if (downstreamIds.has(node.id)) {
-      // Executed inside the csv-import loop below
-      continue;
-    }
+    if (loopOwnerOf.has(node.id)) continue;
 
     const def = getBlock(node.type);
     if (!def) continue;
+
+    if (node.type === "loop-batch") {
+      const bodyEdge = wf.edges.find((e) => e.source === node.id);
+      const bodyNode = bodyEdge ? wf.nodes.find((n) => n.id === bodyEdge.target) : undefined;
+      await runLoopBatchSim(node, bodyNode, net, push);
+      continue;
+    }
 
     // Simulate latency for network blocks.
     if (def.network) await new Promise((r) => setTimeout(r, 250));
@@ -177,6 +187,69 @@ export async function runSandbox(
   return { ok: true, logs };
 }
 
+/** Simulated Loop / Batch: describes the connected body step once per iteration. */
+async function runLoopBatchSim(
+  loopNode: WorkflowNode,
+  bodyNode: WorkflowNode | undefined,
+  net: NetworkConfig,
+  push: (log: RunLog) => void
+) {
+  const items = resolveLoopItems(loopNode.data);
+
+  if (!bodyNode) {
+    push({
+      nodeId: loopNode.id,
+      blockType: loopNode.type,
+      level: "warn",
+      message: "Loop / Batch has no step connected after it — nothing to repeat.",
+      at: Date.now(),
+    });
+    return;
+  }
+
+  const bodyDef = getBlock(bodyNode.type);
+  if (!bodyDef) return;
+
+  push({
+    nodeId: loopNode.id,
+    blockType: loopNode.type,
+    level: "info",
+    message: `Loop / Batch: ${items.length} iteration(s) of "${bodyDef.label}".`,
+    at: Date.now(),
+  });
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const data = applyLoopVars(bodyNode.data, { item, index: i });
+    if (bodyDef.network) await new Promise((r) => setTimeout(r, 120));
+
+    push({
+      nodeId: bodyNode.id,
+      blockType: bodyNode.type,
+      level: bodyDef.network ? "network" : "info",
+      message: `  [${i + 1}/${items.length}] ${bodyDef.label}: ${describeStep(bodyNode.type, data, net)}`,
+      at: Date.now(),
+    });
+    if (bodyDef.network) {
+      push({
+        nodeId: bodyNode.id,
+        blockType: bodyNode.type,
+        level: "success",
+        message: `    ↳ tx ${fakeHash()} confirmed`,
+        at: Date.now(),
+      });
+    }
+  }
+
+  push({
+    nodeId: loopNode.id,
+    blockType: loopNode.type,
+    level: "success",
+    message: `Loop complete — ${items.length} iteration(s).`,
+    at: Date.now(),
+  });
+}
+
 function describeStep(type: string, data: Record<string, unknown>, net: NetworkConfig): string {
   switch (type) {
     case "create-wallet":
@@ -193,6 +266,10 @@ function describeStep(type: string, data: Record<string, unknown>, net: NetworkC
       return `${short(data.contractId)}.${data.method ?? "?"}()`;
     case "wait-for-payment":
       return `watching ${short(data.address)} for ${data.amount ?? "any"} ${data.asset ?? "XLM"}`;
+    case "create-invoice":
+      return `generating ${data.amount ?? "?"} ${data.asset ?? ""} invoice`;
+    case "swap-asset":
+      return `analyzing ${data.amount ?? "?"} ${String(data.sendAsset ?? "XLM")} → ${String(data.destAsset ?? "USDC")}`;
     case "trigger-webhook":
       return `${data.method ?? "POST"} ${data.url ?? "?"}`;
     case "csv-import":
