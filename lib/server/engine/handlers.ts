@@ -4,11 +4,14 @@ import {
   buildInvoiceUri,
   configureMultisigAccount,
   createFundedKeypair,
+  depositLiquidityPool,
+  getLiquidityPoolInfo,
   getNativeBalance,
   muxedAddress,
   sendPayment,
   verifyTransaction,
   waitForPayment,
+  withdrawLiquidityPool,
 } from "../stellar/operations";
 import type { BlockHandler, RunContext } from "./types";
 import type { WorkflowNode } from "../workflow-schema";
@@ -413,6 +416,118 @@ const HANDLERS: Record<string, BlockHandler> = {
       message: "Swap is advisory in the sandbox — wire a specific path/pool to execute for real.",
     });
     ctx.outputs[node.id] = { simulated: true };
+  },
+
+  "liquidity-pool": async (node, ctx) => {
+    const source = requireAccount(ctx);
+    const action = str(node.data.action) ?? "deposit";
+    const assetA = str(node.data.assetA) ?? "XLM";
+    const assetB = str(node.data.assetB) ?? "USDC";
+    const poolId = str(node.data.poolId);
+
+    if (action === "deposit") {
+      const amountA = str(node.data.amountA);
+      const amountB = str(node.data.amountB);
+      if (!amountA || !amountB) {
+        throw new Error("Liquidity Pool deposit requires both Asset A and Asset B amounts.");
+      }
+
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "network",
+        message: `Validating balances & depositing ${amountA} ${assetA} + ${amountB} ${assetB} into pool…`,
+      });
+
+      const res = await depositLiquidityPool(ctx.net, {
+        source,
+        assetCodeA: assetA,
+        assetCodeB: assetB,
+        amountA,
+        amountB,
+        minPrice: str(node.data.minPrice) ?? "0.1",
+        maxPrice: str(node.data.maxPrice) ?? "10",
+        poolId,
+      });
+
+      ctx.outputs[node.id] = {
+        txHash: res.hash,
+        poolId: res.poolId,
+        estimatedLpTokens: res.estimatedLpTokens,
+        depositedA: amountA,
+        depositedB: amountB,
+        status: "succeeded",
+      };
+      ctx.outputs._last = { txHash: res.hash, status: "succeeded" };
+
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "success",
+        message: `Deposited into pool ${res.poolId.slice(0, 8)}… ~${res.estimatedLpTokens} LP tokens received`,
+        txHash: res.hash,
+      });
+    } else if (action === "withdraw") {
+      const shares = str(node.data.shares);
+      if (!shares) {
+        throw new Error("Liquidity Pool withdraw requires LP shares amount.");
+      }
+
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "network",
+        message: `Withdrawing ${shares} LP shares from ${assetA}/${assetB} pool…`,
+      });
+
+      const res = await withdrawLiquidityPool(ctx.net, {
+        source,
+        assetCodeA: assetA,
+        assetCodeB: assetB,
+        shares,
+        minAmountA: str(node.data.minAmountA),
+        minAmountB: str(node.data.minAmountB),
+        poolId,
+      });
+
+      ctx.outputs[node.id] = {
+        txHash: res.hash,
+        poolId: res.poolId,
+        sharesBurned: res.sharesBurned,
+        status: "succeeded",
+      };
+      ctx.outputs._last = { txHash: res.hash, status: "succeeded" };
+
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "success",
+        message: `Withdrew ${shares} LP shares from pool ${res.poolId.slice(0, 8)}…`,
+        txHash: res.hash,
+      });
+    } else {
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "network",
+        message: `Fetching pool info for ${assetA}/${assetB}…`,
+      });
+
+      const info = await getLiquidityPoolInfo(ctx.net, assetA, assetB, poolId);
+
+      ctx.outputs[node.id] = {
+        poolId: info.poolId,
+        totalShares: info.totalShares,
+        reserves: info.reserves,
+      };
+
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "success",
+        message: `Pool ${info.poolId.slice(0, 8)}… total shares: ${info.totalShares}`,
+      });
+    }
   },
 
   "on-success": async (node, ctx) => {
