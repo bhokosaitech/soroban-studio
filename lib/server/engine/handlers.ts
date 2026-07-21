@@ -1,9 +1,11 @@
 import { Keypair } from "@stellar/stellar-sdk";
 import {
   addTrustline,
+  analyzeSwap,
   buildInvoiceUri,
   configureMultisigAccount,
   createFundedKeypair,
+  executeSwap,
   getNativeBalance,
   muxedAddress,
   sendPayment,
@@ -404,15 +406,105 @@ const HANDLERS: Record<string, BlockHandler> = {
   "deploy-contract": async (node, ctx) => contractPing(node, ctx, "Deploy Contract"),
 
   "swap-asset": async (node, ctx) => {
-    // Path payments need on-chain liquidity/paths; kept advisory to avoid
-    // failing runs on empty testnet order books.
+    const account = requireAccount(ctx);
+
+    const sendAsset = str(node.data.sendAsset) ?? "XLM";
+    const destAsset = str(node.data.destAsset) ?? "USDC";
+    const amount = num(node.data.amount);
+    const mode = str(node.data.mode) ?? "exact-in";
+    const slippageBps = num(node.data.slippageBps) ?? 100;
+    const sharpness = str(node.data.sharpness) ?? "fast";
+
+    if (sendAsset.toUpperCase() === destAsset.toUpperCase()) {
+      throw new Error("Swap Asset: input asset and output asset must be different.");
+    }
+    if (!amount || !Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Swap Asset: amount must be greater than zero.");
+    }
+
+    // Step 1 — fetch a live quote so we can log the preview before executing.
     ctx.emit({
       nodeId: node.id,
       blockType: node.type,
-      level: "warn",
-      message: "Swap is advisory in the sandbox — wire a specific path/pool to execute for real.",
+      level: "network",
+      message: `Fetching ${sendAsset} → ${destAsset} liquidity quote (${mode})…`,
     });
-    ctx.outputs[node.id] = { simulated: true };
+
+    let quote;
+    try {
+      quote = await analyzeSwap({
+        net: ctx.net,
+        source: account,
+        sendAsset,
+        destAsset,
+        amount: String(amount),
+        mode: mode as "exact-in" | "exact-out",
+        slippageBps,
+        sharpness,
+      });
+    } catch (e) {
+      throw new Error(`Swap Asset (quote): ${(e as Error).message}`);
+    }
+
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "info",
+      message:
+        `Quote: ~${quote.expectedReceive} ${destAsset} received` +
+        ` (route: ${quote.route}, min after ${slippageBps / 100}% slippage: ${quote.sendAmountMin} ${sendAsset}).`,
+    });
+
+    // Step 2 — execute the real path-payment transaction.
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "network",
+      message: `Submitting ${mode === "exact-out" ? "pathPaymentStrictReceive" : "pathPaymentStrictSend"} transaction…`,
+    });
+
+    try {
+      const result = await executeSwap({
+        net: ctx.net,
+        source: account,
+        sendAsset,
+        destAsset,
+        amount: String(amount),
+        mode: mode as "exact-in" | "exact-out",
+        slippageBps,
+        sharpness,
+        quote,
+      });
+
+      ctx.outputs[node.id] = {
+        txHash: result.txHash,
+        sendAsset,
+        destAsset,
+        sentAmount: result.sentAmount,
+        receivedAmount: result.receivedAmount,
+        mode,
+        slippageBps,
+        route: quote.route,
+      };
+      ctx.outputs._last = {
+        txHash: result.txHash,
+        amount: result.receivedAmount,
+        status: "succeeded",
+      };
+
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "success",
+        message:
+          `Swap confirmed — sent ${result.sentAmount} ${sendAsset},` +
+          ` received ${result.receivedAmount} ${destAsset}.` +
+          ` ${ctx.net.explorerTx(result.txHash)}`,
+        txHash: result.txHash,
+      });
+    } catch (e) {
+      throw new Error(explainSwapError(e, sendAsset, destAsset));
+    }
   },
 
   "on-success": async (node, ctx) => {
@@ -466,6 +558,25 @@ function explainHorizonError(e: unknown, asset: string): string {
   if (codes.includes("op_underfunded")) return "Payment failed: source account is underfunded.";
   if (codes.includes("tx_bad_seq")) return "Payment failed: bad sequence — retry the run.";
   return `Payment failed${codes.length ? `: ${codes.join(", ")}` : `: ${(e as Error).message}`}`;
+}
+
+function explainSwapError(e: unknown, sendAsset: string, destAsset: string): string {
+  // Surface the original message from executeSwap first (already human-readable).
+  const msg = (e as Error).message ?? "";
+  if (msg.startsWith("Swap Asset:")) return msg;
+
+  const codes = extractResultCodes(e);
+  if (codes.includes("op_too_few_offers"))
+    return `Swap Asset: no liquidity path found for ${sendAsset} → ${destAsset}. Try a smaller amount or wider slippage.`;
+  if (codes.includes("op_cross_self"))
+    return `Swap Asset: the order would cross your own offers. Use a different account.`;
+  if (codes.includes("op_underfunded"))
+    return `Swap Asset: insufficient ${sendAsset} balance to complete the swap.`;
+  if (codes.includes("op_no_trust"))
+    return `Swap Asset: missing trustline for ${destAsset}. The auto-establish step failed — try adding the trustline manually first.`;
+  if (codes.includes("tx_bad_seq"))
+    return "Swap Asset: bad sequence number — retry the run.";
+  return `Swap Asset failed${codes.length ? `: ${codes.join(", ")}` : `: ${msg}`}`;
 }
 
 function extractResultCodes(e: unknown): string[] {
