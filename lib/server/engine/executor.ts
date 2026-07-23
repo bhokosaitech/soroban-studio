@@ -1,5 +1,5 @@
 import type { Keypair } from "@stellar/stellar-sdk";
-import { executionOrder, type Workflow, type WorkflowNode } from "../workflow-schema";
+import { executionOrder, getDownstreamNodeIds, type Workflow, type WorkflowNode } from "../workflow-schema";
 import { getServerNetwork } from "../stellar/network";
 import { getHandler } from "./handlers";
 import { applyLoopVars, resolveLoopItems } from "./loop";
@@ -44,6 +44,9 @@ export async function executeWorkflow(
   const order = executionOrder(wf);
   const labelOf = (id: string) => wf.nodes.find((n) => n.id === id)?.type ?? id;
 
+  const csvNode = wf.nodes.find((n) => n.type === "csv-import");
+  const downstreamIds = csvNode ? getDownstreamNodeIds(wf, csvNode.id) : new Set<string>();
+
   // Entry points: nodes with no incoming edges.
   const hasIncoming = new Set(wf.edges.map((e) => e.target));
   const reached = new Set(wf.nodes.filter((n) => !hasIncoming.has(n.id)).map((n) => n.id));
@@ -60,6 +63,11 @@ export async function executeWorkflow(
   let failed = false;
 
   for (const node of order) {
+    if (downstreamIds.has(node.id)) {
+      // These nodes are executed inside the csv-import loop below. Skip them here.
+      continue;
+    }
+
     if (!reached.has(node.id)) {
       // Reached only via a branch that wasn't taken — skip quietly.
       if (hasIncoming.has(node.id)) {
@@ -106,6 +114,122 @@ export async function executeWorkflow(
 
     try {
       await handler(node, ctx);
+      
+      if (node.type === "csv-import") {
+        const rows = (node.data?.rows as any[]) || [];
+        const mappings = (node.data?.mappings as Record<string, string>) || {};
+        
+        if (rows.length === 0) {
+          ctx.emit({
+            nodeId: node.id,
+            blockType: node.type,
+            level: "warn",
+            message: "CSV Import: No rows to process.",
+          });
+          enableOutgoing(node.id);
+          continue;
+        }
+
+        ctx.emit({
+          nodeId: node.id,
+          blockType: node.type,
+          level: "info",
+          message: `CSV Import: Starting batch processing of ${rows.length} rows.`,
+        });
+
+        let batchFailed = false;
+
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          ctx.emit({
+            nodeId: node.id,
+            blockType: node.type,
+            level: "info",
+            message: `--- Processing row ${i + 1} of ${rows.length} ---`,
+          });
+
+          // Map the row fields to the workflow input keys
+          const mappedRow: Record<string, any> = {};
+          for (const [wfKey, csvCol] of Object.entries(mappings)) {
+            if (csvCol && row[csvCol] !== undefined) {
+              mappedRow[wfKey] = row[csvCol];
+            }
+          }
+
+          ctx.currentRow = mappedRow;
+
+          // Run downstream nodes for this row
+          const rowReached = new Set<string>();
+          // Add targets of the csv-import node to start
+          for (const edge of wf.edges.filter((e) => e.source === node.id)) {
+            rowReached.add(edge.target);
+          }
+
+          let rowFailed = false;
+          const downstreamOrder = order.filter((n) => downstreamIds.has(n.id));
+
+          for (const dsNode of downstreamOrder) {
+            if (!rowReached.has(dsNode.id)) {
+              continue;
+            }
+
+            if (dsNode.type === "on-error" && !rowFailed) continue;
+            if (dsNode.type === "on-success" && rowFailed) continue;
+
+            const dsHandler = getHandler(dsNode.type);
+            if (!dsHandler) {
+              enableRowOutgoing(dsNode.id);
+              continue;
+            }
+
+            try {
+              await dsHandler(dsNode, ctx);
+              enableRowOutgoing(dsNode.id);
+            } catch (err) {
+              rowFailed = true;
+              ctx.emit({
+                nodeId: dsNode.id,
+                blockType: dsNode.type,
+                level: "error",
+                message: `Row ${i + 1} failed: ${(err as Error).message ?? "Step failed."}`,
+              });
+              // Execute on-error handlers for this row
+              for (const errNode of downstreamOrder.filter((n) => n.type === "on-error")) {
+                const h = getHandler(errNode.type);
+                if (h) await h(errNode, ctx).catch(() => {});
+              }
+              break;
+            }
+          }
+
+          if (rowFailed) {
+            batchFailed = true;
+            break;
+          }
+
+          function enableRowOutgoing(nodeId: string) {
+            const isCondition = labelOf(nodeId) === "condition";
+            const result = Boolean(ctx.outputs[nodeId]?.result);
+            for (const e of wf.edges.filter((x) => x.source === nodeId)) {
+              let enabled = true;
+              if (isCondition) {
+                const h = e.sourceHandle;
+                if (h === "true") enabled = result;
+                else if (h === "false") enabled = !result;
+              }
+              if (enabled) rowReached.add(e.target);
+            }
+          }
+        }
+
+        ctx.currentRow = undefined;
+
+        if (batchFailed) {
+          failed = true;
+          break;
+        }
+      }
+
       enableOutgoing(node.id);
     } catch (e) {
       failed = true;

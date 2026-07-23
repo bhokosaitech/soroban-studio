@@ -174,14 +174,32 @@ export function validateWorkflow(wf: Workflow): string[] {
     problems.push("Workflow needs a trigger block to start.");
   }
 
+  const csvNode = wf.nodes.find((n) => n.type === "csv-import");
+  const mappings = (csvNode?.data?.mappings as Record<string, string>) || {};
+
   for (const n of wf.nodes) {
     const def = getBlock(n.type);
     if (!def) {
       problems.push(`Unknown block type "${n.type}".`);
       continue;
     }
+
+    if (n.type === "csv-import") {
+      const rows = (n.data?.rows as any[]) || [];
+      const errors = (n.data?.errors as string[]) || [];
+      if (rows.length === 0) {
+        problems.push("CSV Import: No CSV data uploaded.");
+      }
+      if (errors.length > 0) {
+        problems.push(`CSV Import: ${errors.length} validation errors must be resolved.`);
+      }
+    }
+
     for (const f of def.fields) {
       if (f.required && !n.data[f.key]) {
+        if (mappings[f.key]) {
+          continue;
+        }
         problems.push(`"${def.label}" is missing required field "${f.label}".`);
       }
     }
@@ -196,6 +214,21 @@ export function validateWorkflow(wf: Workflow): string[] {
   }
 
   return problems;
+}
+
+export function getDownstreamNodeIds(wf: Workflow, startNodeId: string): Set<string> {
+  const downstream = new Set<string>();
+  const queue = [startNodeId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const edge of wf.edges) {
+      if (edge.source === current && !downstream.has(edge.target)) {
+        downstream.add(edge.target);
+        queue.push(edge.target);
+      }
+    }
+  }
+  return downstream;
 }
 
 /**

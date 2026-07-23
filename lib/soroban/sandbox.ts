@@ -1,5 +1,5 @@
 import { getBlock } from "@/lib/blocks/catalog";
-import { applyLoopVars, executionOrder, resolveLoopItems, type Workflow, type WorkflowNode } from "@/lib/workflow";
+import { applyLoopVars, executionOrder, resolveLoopItems, getDownstreamNodeIds, type Workflow, type WorkflowNode } from "@/lib/workflow";
 import { getNetwork, type NetworkConfig } from "./config";
 
 /**
@@ -62,8 +62,12 @@ export async function runSandbox(
     if (bodyEdge) loopOwnerOf.set(bodyEdge.target, n);
   }
 
+  const csvNode = wf.nodes.find((n) => n.type === "csv-import");
+  const downstreamIds = csvNode ? getDownstreamNodeIds(wf, csvNode.id) : new Set<string>();
+
   for (const node of executionOrder(wf)) {
     if (loopOwnerOf.has(node.id)) continue;
+    if (downstreamIds.has(node.id)) continue;
 
     const def = getBlock(node.type);
     if (!def) continue;
@@ -95,6 +99,84 @@ export async function runSandbox(
         message: `  ↳ tx ${fakeHash()} confirmed`,
         at: Date.now(),
       });
+    }
+
+    if (node.type === "csv-import") {
+      const rows = (node.data?.rows as any[]) || [];
+      const mappings = (node.data?.mappings as Record<string, string>) || {};
+
+      if (rows.length === 0) {
+        push({
+          nodeId: node.id,
+          blockType: node.type,
+          level: "warn",
+          message: "CSV Import: No rows to process.",
+          at: Date.now(),
+        });
+        continue;
+      }
+
+      push({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "info",
+        message: `CSV Import: Starting simulated batch processing of ${rows.length} rows.`,
+        at: Date.now(),
+      });
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        push({
+          nodeId: node.id,
+          blockType: node.type,
+          level: "info",
+          message: `--- [Simulated] Processing row ${i + 1} of ${rows.length} ---`,
+          at: Date.now(),
+        });
+
+        // Map row to simulated step inputs
+        const mappedRow: Record<string, any> = {};
+        for (const [wfKey, csvCol] of Object.entries(mappings)) {
+          if (csvCol && row[csvCol] !== undefined) {
+            mappedRow[wfKey] = row[csvCol];
+          }
+        }
+
+        const downstreamNodes = executionOrder(wf).filter((n) => downstreamIds.has(n.id));
+        for (const dsNode of downstreamNodes) {
+          const dsDef = getBlock(dsNode.type);
+          if (!dsDef) continue;
+
+          // Override node.data with mapped row fields for description
+          const simulatedData = { ...dsNode.data };
+          for (const key of Object.keys(simulatedData)) {
+            if (mappedRow[key] !== undefined) {
+              simulatedData[key] = mappedRow[key];
+            }
+          }
+
+          if (dsDef.network) await new Promise((r) => setTimeout(r, 100));
+
+          const dsDetail = describeStep(dsNode.type, simulatedData, net);
+          push({
+            nodeId: dsNode.id,
+            blockType: dsNode.type,
+            level: dsDef.network ? "network" : "info",
+            message: `${dsDef.label}: ${dsDetail}`,
+            at: Date.now(),
+          });
+
+          if (dsDef.network) {
+            push({
+              nodeId: dsNode.id,
+              blockType: dsNode.type,
+              level: "success",
+              message: `  ↳ tx ${fakeHash()} confirmed`,
+              at: Date.now(),
+            });
+          }
+        }
+      }
     }
   }
 
@@ -194,9 +276,12 @@ function describeStep(type: string, data: Record<string, unknown>, net: NetworkC
       return `analyzing ${data.amount ?? "?"} ${String(data.sendAsset ?? "XLM")} → ${String(data.destAsset ?? "USDC")}`;
     case "trigger-webhook":
       return `${data.method ?? "POST"} ${data.url ?? "?"}`;
-    case "multisig-wallet":
-      const signers = data.signers as Array<{ publicKey: string; weight: number }> || [];
+    case "csv-import":
+      return `reading CSV dataset with ${(data.rows as any[])?.length ?? 0} rows`;
+    case "multisig-wallet": {
+      const signers = (data.signers as Array<{ publicKey: string; weight: number }>) || [];
       return `configuring ${signers.length} signer(s) with thresholds (low: ${data.lowThreshold ?? 1}, med: ${data.mediumThreshold ?? 2}, high: ${data.highThreshold ?? 3})`;
+    }
     default:
       return "ok";
   }
