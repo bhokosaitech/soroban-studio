@@ -57,3 +57,18 @@ export function executionOrder(wf: Workflow): WorkflowNode[] {
   for (const n of wf.nodes) if (!seen.has(n.id)) order.push(n);
   return order;
 }
+
+export function getDownstreamNodeIds(wf: Workflow, startNodeId: string): Set<string> {
+  const downstream = new Set<string>();
+  const queue = [startNodeId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const edge of wf.edges) {
+      if (edge.source === current && !downstream.has(edge.target)) {
+        downstream.add(edge.target);
+        queue.push(edge.target);
+      }
+    }
+  }
+  return downstream;
+}
