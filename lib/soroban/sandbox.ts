@@ -282,6 +282,15 @@ function describeStep(type: string, data: Record<string, unknown>, net: NetworkC
       const signers = (data.signers as Array<{ publicKey: string; weight: number }>) || [];
       return `configuring ${signers.length} signer(s) with thresholds (low: ${data.lowThreshold ?? 1}, med: ${data.mediumThreshold ?? 2}, high: ${data.highThreshold ?? 3})`;
     }
+    case "liquidity-pool": {
+      const act = data.action ?? "deposit";
+      const pair = `${data.assetA ?? "XLM"}/${data.assetB ?? "USDC"}`;
+      if (act === "deposit")
+        return `depositing liquidity (${data.amountA ?? "max"} ${data.assetA ?? "XLM"} + ${data.amountB ?? "max"} ${data.assetB ?? "USDC"}) into ${pair} pool`;
+      if (act === "withdraw")
+        return `withdrawing ${data.shares ?? "all"} LP shares from ${pair} pool`;
+      return `fetching liquidity pool info for ${pair}`;
+    }
     default:
       return "ok";
   }
