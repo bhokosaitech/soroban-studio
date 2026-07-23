@@ -1,4 +1,6 @@
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, Address, Operation, TransactionBuilder, BASE_FEE, nativeToScVal, rpc, xdr } from "@stellar/stellar-sdk";
+import crypto from "crypto";
+import { getServerNetwork, type ServerNetwork } from "../stellar/network";
 import {
   addTrustline,
   analyzeSwap,
@@ -403,7 +405,85 @@ const HANDLERS: Record<string, BlockHandler> = {
   },
 
   "invoke-contract": async (node, ctx) => contractPing(node, ctx, "Invoke Contract"),
-  "deploy-contract": async (node, ctx) => contractPing(node, ctx, "Deploy Contract"),
+  "deploy-contract": async (node, ctx) => {
+    const source = requireAccount(ctx);
+    const wasmObj = node.data.wasm as { filename?: string; base64?: string } | null | undefined;
+    if (!wasmObj || !wasmObj.base64) {
+      throw new Error("Deploy Contract: WASM file is required. Upload a contract (.wasm) in the inspector first.");
+    }
+    
+    const wasmBuffer = Buffer.from(wasmObj.base64, "base64");
+    const blockNetwork = str(node.data.network);
+    const net = blockNetwork === "mainnet" || blockNetwork === "testnet" 
+      ? getServerNetwork(blockNetwork) 
+      : ctx.net;
+
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "info",
+      message: `Deploy Contract: Uploading WASM "${wasmObj.filename ?? "contract.wasm"}" (${(wasmBuffer.length / 1024).toFixed(1)} KB) on ${net.id}…`,
+    });
+
+    const wasmHashBuffer = crypto.createHash("sha256").update(wasmBuffer).digest();
+    const uploadOp = Operation.uploadContractWasm({
+      wasm: wasmBuffer,
+    });
+    
+    await submitSorobanTx(net, source, uploadOp, node, ctx, "Upload WASM");
+
+    let constructorArgs: any[] = [];
+    const argsRaw = str(node.data.constructorArgs);
+    if (argsRaw) {
+      try {
+        const parsed = JSON.parse(argsRaw);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Constructor arguments must be a JSON array.");
+        }
+        constructorArgs = parsed.map((arg) => nativeToScVal(arg));
+      } catch (err: any) {
+        throw new Error(`Deploy Contract: invalid constructor arguments: ${err.message}`);
+      }
+    }
+
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "info",
+      message: "Deploy Contract: Instantiating contract instance…",
+    });
+
+    const salt = crypto.randomBytes(32);
+    const createOp = Operation.createCustomContract({
+      address: new Address(source.publicKey()),
+      wasmHash: wasmHashBuffer,
+      constructorArgs,
+      salt,
+    });
+
+    const createTxResult = await submitSorobanTx(net, source, createOp, node, ctx, "Instantiate Contract");
+
+    let contractId: string;
+    try {
+      const resultXdr = createTxResult.resultXdr;
+      const txResult = xdr.TransactionResult.fromXDR(resultXdr, "base64");
+      const opResult = txResult.result().results()[0];
+      const invokeHostFunctionResult = opResult.tr().invokeHostFunctionResult();
+      const scValBytes = invokeHostFunctionResult.success();
+      const scVal = xdr.ScVal.fromXDR(scValBytes);
+      contractId = Address.fromScVal(scVal).toString();
+    } catch (err: any) {
+      throw new Error(`Deploy Contract: failed to parse contract ID from transaction result: ${err.message}`);
+    }
+
+    ctx.outputs[node.id] = { contractId };
+    ctx.emit({
+      nodeId: node.id,
+      blockType: node.type,
+      level: "success",
+      message: `Contract successfully deployed! ID: ${contractId}`,
+    });
+  },
 
   "swap-asset": async (node, ctx) => {
     const account = requireAccount(ctx);
@@ -525,6 +605,65 @@ const HANDLERS: Record<string, BlockHandler> = {
     });
   },
 };
+
+async function submitSorobanTx(
+  net: ServerNetwork,
+  source: Keypair,
+  op: any,
+  node: WorkflowNode,
+  ctx: RunContext,
+  stageLabel: string
+): Promise<any> {
+  const account = await net.horizon.loadAccount(source.publicKey());
+  let tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: net.passphrase,
+  })
+    .addOperation(op)
+    .setTimeout(60)
+    .build();
+
+  const sim = await net.sorobanRpc.simulateTransaction(tx);
+  if (rpc.Api.isSimulationSuccess(sim)) {
+    tx = rpc.assembleTransaction(tx, sim).build();
+  } else {
+    const err = (sim as any).error ? JSON.stringify((sim as any).error) : JSON.stringify(sim);
+    throw new Error(`${stageLabel} simulation failed: ${err}`);
+  }
+
+  tx.sign(source);
+  const response = await net.sorobanRpc.sendTransaction(tx);
+  if (response.status === "ERROR") {
+    throw new Error(`${stageLabel} submission failed: ${JSON.stringify((response as any).errorResult || (response as any).errorResultXdr || response)}`);
+  }
+
+  const txHash = response.hash;
+  ctx.emit({
+    nodeId: node.id,
+    blockType: node.type,
+    level: "network",
+    message: `${stageLabel} submitted. Hash: ${txHash}. Waiting for ledger…`,
+  });
+
+  const deadline = Date.now() + 60 * 1000;
+  while (Date.now() < deadline) {
+    const status = await net.sorobanRpc.getTransaction(txHash);
+    if (status.status === "SUCCESS") {
+      ctx.emit({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "success",
+        message: `${stageLabel} confirmed. Hash: ${txHash}`,
+      });
+      return status;
+    }
+    if (status.status === "FAILED") {
+      throw new Error(`${stageLabel} failed: ${JSON.stringify(status.resultXdr || status)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  throw new Error(`${stageLabel} confirmation timed out.`);
+}
 
 /** Prove real Soroban RPC connectivity; full invoke needs args + signing. */
 async function contractPing(node: WorkflowNode, ctx: RunContext, label: string) {

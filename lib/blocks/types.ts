@@ -26,7 +26,8 @@ export type FieldType =
   | "wallet"
   | "secret"
   | "list"
-  | "signers";
+  | "signers"
+  | "wasm";
 
 /** A configurable parameter shown in the node inspector. */
 export interface BlockField {

@@ -332,7 +332,24 @@ export const BLOCK_CATALOG: BlockDefinition[] = [
     network: true,
     handles: { target: true, source: true },
     fields: [
-      { key: "wasmHash", label: "WASM hash / path", type: "text", required: true },
+      { key: "wasm", label: "WASM contract file", type: "wasm", required: true },
+      {
+        key: "network",
+        label: "Network",
+        type: "select",
+        default: "testnet",
+        options: [
+          { label: "Testnet", value: "testnet" },
+          { label: "Mainnet", value: "mainnet" },
+        ],
+      },
+      {
+        key: "constructorArgs",
+        label: "Constructor arguments (JSON array)",
+        type: "text",
+        placeholder: '["hello", 42]',
+        help: "Optional JSON array of arguments to pass to the constructor.",
+      },
     ],
   },
   {

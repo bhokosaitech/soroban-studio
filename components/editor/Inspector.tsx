@@ -136,6 +136,10 @@ function Field({
     return <WalletField field={field} value={value} onChange={onChange} />;
   }
 
+  if (field.type === "wasm") {
+    return <WasmField field={field} value={value} onChange={onChange} />;
+  }
+
   if (field.type === "list") {
     return <ListField field={field} value={value} onChange={onChange} />;
   }
@@ -451,6 +455,72 @@ function SignersField({
         {keyError && <p className="text-[11px] font-medium text-red-500">{keyError}</p>}
       </div>
       <style jsx>{inputStyle}</style>
+    </Labeled>
+  );
+}
+
+function WasmField({
+  field,
+  value,
+  onChange,
+}: {
+  field: BlockField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const data = value as { filename?: string; base64?: string } | null | undefined;
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      const base64 = result.split(",")[1];
+      onChange({
+        filename: file.name,
+        base64,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const label = (
+    <span>
+      {field.label}
+      {field.required && <span className="text-accent"> *</span>}
+    </span>
+  );
+
+  return (
+    <Labeled label={label} help={field.help}>
+      <div
+        onClick={() => fileInputRef.current?.click()}
+        className="flex flex-col gap-2 rounded-lg border border-dashed border-border p-3 text-center bg-off hover:bg-white transition-colors cursor-pointer"
+      >
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept=".wasm"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        {data?.filename ? (
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[12px] font-medium text-ink truncate max-w-full">
+              {data.filename}
+            </span>
+            <span className="text-[10px] text-muted">Click to change file</span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1 py-1">
+            <span className="text-[12px] font-medium text-ink">Upload WASM file</span>
+            <span className="text-[10px] text-muted">Click to select .wasm contract</span>
+          </div>
+        )}
+      </div>
     </Labeled>
   );
 }
