@@ -1,12 +1,11 @@
 "use client";
 
-import { useRef } from "react";
 import { getBlock } from "@/lib/blocks/catalog";
 import type { BlockField } from "@/lib/blocks/types";
 import { ASSET_OPTIONS } from "@/lib/blocks/assets";
 import { useEditorStore } from "@/lib/store/editor";
 import { useVaultStore } from "@/lib/vault/store";
-import { Trash2, Plus, X, RefreshCw, TrendingDown, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Trash2, Plus, X, RefreshCw, TrendingDown, AlertTriangle, CheckCircle2, Download } from "lucide-react";
 import { useState, useCallback, useRef } from "react";
 
 /**

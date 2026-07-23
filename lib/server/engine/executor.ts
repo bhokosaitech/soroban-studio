@@ -1,5 +1,5 @@
 import type { Keypair } from "@stellar/stellar-sdk";
-import { executionOrder, type Workflow, type WorkflowNode } from "../workflow-schema";
+import { executionOrder, getDownstreamNodeIds, type Workflow, type WorkflowNode } from "../workflow-schema";
 import { getServerNetwork } from "../stellar/network";
 import { getHandler } from "./handlers";
 import { applyLoopVars, resolveLoopItems } from "./loop";

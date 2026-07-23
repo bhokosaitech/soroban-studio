@@ -1,5 +1,5 @@
 import { getBlock } from "@/lib/blocks/catalog";
-import { applyLoopVars, executionOrder, resolveLoopItems, type Workflow, type WorkflowNode } from "@/lib/workflow";
+import { applyLoopVars, executionOrder, resolveLoopItems, getDownstreamNodeIds, type Workflow, type WorkflowNode } from "@/lib/workflow";
 import { getNetwork, type NetworkConfig } from "./config";
 
 /**
@@ -62,8 +62,12 @@ export async function runSandbox(
     if (bodyEdge) loopOwnerOf.set(bodyEdge.target, n);
   }
 
+  const csvNode = wf.nodes.find((n) => n.type === "csv-import");
+  const downstreamIds = csvNode ? getDownstreamNodeIds(wf, csvNode.id) : new Set<string>();
+
   for (const node of executionOrder(wf)) {
     if (loopOwnerOf.has(node.id)) continue;
+    if (downstreamIds.has(node.id)) continue;
 
     const def = getBlock(node.type);
     if (!def) continue;

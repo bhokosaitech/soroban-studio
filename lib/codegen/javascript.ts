@@ -1,5 +1,5 @@
 import { getBlock } from "@/lib/blocks/catalog";
-import { executionOrder, resolveLoopItems, type Workflow } from "@/lib/workflow";
+import { executionOrder, resolveLoopItems, getDownstreamNodeIds, type Workflow } from "@/lib/workflow";
 import { getNetwork, type NetworkConfig } from "@/lib/soroban/config";
 
 /**
