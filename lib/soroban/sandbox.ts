@@ -79,6 +79,53 @@ export async function runSandbox(
       continue;
     }
 
+    if (node.type === "deploy-contract") {
+      const wasmFile = (node.data.wasm as { filename?: string })?.filename ?? "contract.wasm";
+      const deployNetwork = String(node.data.network ?? "testnet");
+      
+      push({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "info",
+        message: `Deploy Contract: Uploading WASM "${wasmFile}" on ${deployNetwork}…`,
+        at: Date.now(),
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      push({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "success",
+        message: `  ↳ Upload WASM confirmed. Hash: ${fakeHash()}`,
+        at: Date.now(),
+      });
+      push({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "info",
+        message: "Deploy Contract: Instantiating contract instance…",
+        at: Date.now(),
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      const simulatedContractId = "C" + Array.from({ length: 55 }, () =>
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".charAt(Math.floor(Math.random() * 32))
+      ).join("");
+      push({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "success",
+        message: `  ↳ Instantiate Contract confirmed. Hash: ${fakeHash()}`,
+        at: Date.now(),
+      });
+      push({
+        nodeId: node.id,
+        blockType: node.type,
+        level: "success",
+        message: `Contract successfully deployed! ID: ${simulatedContractId}`,
+        at: Date.now(),
+      });
+      continue;
+    }
+
     // Simulate latency for network blocks.
     if (def.network) await new Promise((r) => setTimeout(r, 250));
 
@@ -268,6 +315,9 @@ function describeStep(type: string, data: Record<string, unknown>, net: NetworkC
       return `encrypted transfer of ${data.amount ?? "?"} via ${short(data.contractId)}`;
     case "invoke-contract":
       return `${short(data.contractId)}.${data.method ?? "?"}()`;
+    case "deploy-contract":
+      const wasmFile = (data.wasm as { filename?: string })?.filename ?? "contract.wasm";
+      return `deploying Soroban contract "${wasmFile}" on ${String(data.network ?? "testnet")}`;
     case "wait-for-payment":
       return `watching ${short(data.address)} for ${data.amount ?? "any"} ${data.asset ?? "XLM"}`;
     case "create-invoice":
