@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, Check, CloudOff, Download, Globe, KeyRound, Loader2, Play, Sparkles, Trash, Upload } from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, CloudOff, Download, Globe, KeyRound, Loader2, Play, Sparkles, Trash, Upload, LayoutTemplate } from "lucide-react";
 import { useEditorStore } from "@/lib/store/editor";
 import type { SaveStatus } from "./useAutoSave";
 
@@ -9,6 +9,7 @@ export function Toolbar({
   onRun,
   onExport,
   onImport,
+  onTemplates,
   onAI,
   onVault,
   onSchedule,
@@ -20,6 +21,7 @@ export function Toolbar({
   onRun: () => void;
   onExport: () => void;
   onImport: () => void;
+  onTemplates: () => void;
   onAI: () => void;
   onVault: () => void;
   onSchedule: () => void;
@@ -64,6 +66,9 @@ export function Toolbar({
         </button>
         <button data-guide="vault" onClick={onVault} className="btn-ghost flex items-center gap-1.5">
           <KeyRound size={14} /> Wallets
+        </button>
+        <button onClick={onTemplates} className="btn-ghost flex items-center gap-1.5" title="Browse templates">
+          <LayoutTemplate size={14} /> Templates
         </button>
         <button onClick={onImport} className="btn-ghost flex items-center gap-1.5" title="Import workflow JSON">
           <Upload size={14} /> Import

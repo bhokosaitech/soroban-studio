@@ -49,6 +49,55 @@ export const TEMPLATES: Template[] = [
     tags: ["contract"],
     blocks: ["trigger-manual", "connect-wallet", "invoke-contract", "on-success"],
   },
+  {
+    id: "token-creation",
+    name: "Token Creation",
+    description: "Deploy a new Soroban token contract and initialize it.",
+    tags: ["token", "contract"],
+    blocks: ["trigger-manual", "connect-wallet", "deploy-contract", "invoke-contract", "on-success"],
+  },
+  {
+    id: "nft-marketplace",
+    name: "NFT Marketplace",
+    description: "List an NFT, wait for a buyer's payment, and execute the transfer.",
+    tags: ["nft", "marketplace"],
+    blocks: ["trigger-manual", "connect-wallet", "invoke-contract", "wait-for-payment", "invoke-contract", "on-success"],
+  },
+  {
+    id: "escrow-payment",
+    name: "Escrow Payment",
+    description: "Hold funds in escrow, check condition, and either release or refund.",
+    tags: ["escrow", "payment", "contract"],
+    blocks: ["wait-for-payment", "condition", "invoke-contract", "on-success"],
+  },
+  {
+    id: "payment-processor",
+    name: "Payment Processor",
+    description: "Generate an invoice, verify incoming payment, and alert your backend via webhook.",
+    tags: ["payments", "automation"],
+    blocks: ["create-invoice", "wait-for-payment", "verify-transaction", "trigger-webhook", "on-success"],
+  },
+  {
+    id: "subscription-payment",
+    name: "Subscription Payment",
+    description: "Trigger recurring payments on a schedule with a loop and delay.",
+    tags: ["subscription", "payment", "automation"],
+    blocks: ["trigger-manual", "connect-wallet", "send-payment", "delay", "loop-batch", "on-success"],
+  },
+  {
+    id: "dao-governance",
+    name: "DAO Governance",
+    description: "Register a vote, check if the proposal passes, and execute the decision.",
+    tags: ["dao", "governance", "contract"],
+    blocks: ["trigger-manual", "connect-wallet", "invoke-contract", "condition", "invoke-contract", "on-success"],
+  },
+  {
+    id: "token-vesting",
+    name: "Token Vesting",
+    description: "Deploy a vesting contract, wait for the cliff/delay, and claim vested tokens.",
+    tags: ["token", "vesting", "automation"],
+    blocks: ["trigger-manual", "connect-wallet", "deploy-contract", "delay", "invoke-contract", "on-success"],
+  },
 ];
 
 export function templateToWorkflow(t: Template): Workflow {
